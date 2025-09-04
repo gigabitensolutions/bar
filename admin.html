@@ -22,7 +22,7 @@
     </div>
   </header>
 
-  <main class="grid">
+  <main class="grid admin">
     <section class="card">
       <h3>Novo/Editar produto</h3>
       <div class="row">
@@ -30,17 +30,18 @@
         <input id="pName" class="input" placeholder="Nome (ex.: Cerveja Lata 350ml)" style="flex:1">
         <input id="pPrice" class="input" placeholder="Preço (ex.: 12.00)" inputmode="decimal" style="width:140px">
         <input id="pCat" class="input" placeholder="Categoria (ex.: Cerveja)" style="width:180px">
+        <input id="pImg" class="input" placeholder="Imagem (URL ou ./assets/img.png)" style="flex:1">
         <button class="btn accent" id="addBtn">Adicionar/Atualizar</button>
         <button class="btn danger" id="delBtn">Excluir</button>
       </div>
-      <div class="muted" style="margin-top:6px">Dica: clique em uma linha da tabela para carregar no formulário.</div>
+      <div class="muted" style="margin-top:6px">Dica: use caminho relativo (ex.: <code>./assets/cerveja.png</code>) para imagens no seu repositório.</div>
     </section>
 
     <section class="card">
       <h3>Produtos</h3>
       <table id="tbl">
         <thead>
-          <tr><th>ID</th><th>Nome</th><th>Preço</th><th>Categoria</th></tr>
+          <tr><th>Img</th><th>ID</th><th>Nome</th><th>Preço</th><th>Categoria</th></tr>
         </thead>
         <tbody></tbody>
       </table>

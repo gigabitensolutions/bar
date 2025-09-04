@@ -1,12 +1,10 @@
 /* ========= Configurações fixas ========= */
-// PIX fixo (chave aleatória), com nome/cidade/descrição para o payload EMV
 const PIX_CFG = {
-  KEY: 'edab0cd5-ecd4-4050-87f7-fbaf98899713', // chave aleatória (UUID) — altere se quiser
-  MERCHANT: 'GIGABITEN',                        // máx. 25 chars, sem acentos
-  CITY: 'BRASIL',                               // EMV exige cidade; use sem acentos
-  DESC: 'COMANDA'                               // texto curto opcional
+  KEY: 'edab0cd5-ecd4-4050-87f7-fbaf98899713',
+  MERCHANT: 'GIGABITEN',
+  CITY: 'BRASIL',
+  DESC: 'COMANDA'
 };
-// Opções de pagamento
 const PAYMENT_METHODS = ['PIX', 'Cartão de Débito', 'Cartão de Crédito'];
 
 /* ========= Utilidades ========= */
@@ -21,7 +19,8 @@ const LS_KEYS = {
   COMANDAS: 'comandas_v3',
   ACTIVE: 'activeComandaId_v3',
   PRODUCTS: 'products_cache_v1',
-  SERVICE: 'service10_v1'
+  SERVICE: 'service10_v1',
+  BIGTOUCH: 'ui_big_touch_v1'
 };
 
 /* ========= Estado ========= */
@@ -33,6 +32,7 @@ let state = {
   comandas: {},
   activeComandaId: null,
   service10: JSON.parse(localStorage.getItem(LS_KEYS.SERVICE) || 'false'),
+  bigTouch: localStorage.getItem(LS_KEYS.BIGTOUCH) === '1'
 };
 
 /* ========= Persistência ========= */
@@ -48,6 +48,7 @@ function persist(){
   localStorage.setItem(LS_KEYS.COMANDAS, JSON.stringify(state.comandas));
   localStorage.setItem(LS_KEYS.ACTIVE, state.activeComandaId || '');
   localStorage.setItem(LS_KEYS.SERVICE, JSON.stringify(state.service10));
+  localStorage.setItem(LS_KEYS.BIGTOUCH, state.bigTouch ? '1' : '0');
 }
 
 /* ========= Produtos ========= */
@@ -68,18 +69,11 @@ async function loadProducts(){
 function createComanda({name,label,color}){
   const id = uid();
   state.comandas[id] = {
-    id,
-    name,
-    label: label || '',
-    color: color || '#3b82f6',
-    createdAt: Date.now(),
-    payMethod: 'PIX',
-    items:{}
+    id, name, label: label || '', color: color || '#3b82f6',
+    createdAt: Date.now(), payMethod: 'PIX', items:{}
   };
   state.activeComandaId = id;
-  persist();
-  refreshComandaSelect();
-  updateSummaryBar();
+  persist(); refreshComandaSelect(); updateSummaryBar();
   return id;
 }
 function getActive(){ return state.activeComandaId ? state.comandas[state.activeComandaId] : null; }
@@ -136,15 +130,22 @@ function renderGrid(){
   const grid = $('#grid'); const list = state.products.filter(passFilters);
   grid.innerHTML = '';
   list.forEach(p=>{
+    const imgSrc = p.image && p.image.trim() ? p.image.trim() : './assets/placeholder.svg';
     const card = document.createElement('article');
     card.className = 'card';
     card.innerHTML = `
-      <div class="flex">
-        <h3>${p.name}</h3>
+      <div class="product-head">
+        <div class="left">
+          <img class="thumb" src="${imgSrc}" alt="">
+          <div class="title-wrap">
+            <h3 class="title">${p.name}</h3>
+            <div class="muted">${p.category}</div>
+          </div>
+        </div>
         <div class="price">${BRL.format(p.price)}</div>
       </div>
-      <div class="muted">${p.category}</div>
-      <div class="flex" style="margin-top:10px">
+
+      <div class="flex" style="margin-top:12px">
         <div class="stepper">
           <button data-act="dec">−</button>
           <input type="text" inputmode="numeric" value="${getQty(p.id)}">
@@ -292,23 +293,14 @@ async function generatePDF(){
   doc.save(`comanda-${c.name.toLowerCase().replace(/\s+/g,'-')}.pdf`);
 }
 
-/* ========= PIX (EMV/BR Code) ========= */
-function sanitizeASCII(s=''){
-  return (s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^\x20-\x7E]/g,'');
-}
-function emvField(id, value){
-  const v = String(value);
-  const len = String(v.length).padStart(2,'0');
-  return `${id}${len}${v}`;
-}
+/* ========= PIX ========= */
+function sanitizeASCII(s=''){ return (s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^\x20-\x7E]/g,''); }
+function emvField(id, value){ const v=String(value); const len=String(v.length).padStart(2,'0'); return `${id}${len}${v}`; }
 function crc16(payload){
   let crc=0xFFFF;
   for(let i=0;i<payload.length;i++){
     crc ^= payload.charCodeAt(i)<<8;
-    for(let j=0;j<8;j++){
-      crc = (crc & 0x8000) ? ((crc<<1)^0x1021) : (crc<<1);
-      crc &= 0xFFFF;
-    }
+    for(let j=0;j<8;j++){ crc = (crc & 0x8000) ? ((crc<<1)^0x1021) : (crc<<1); crc &= 0xFFFF; }
   }
   return crc.toString(16).toUpperCase().padStart(4,'0');
 }
@@ -317,19 +309,15 @@ function buildPixPayload(amount, txid='COMANDA'){
   const KEY = emvField('01', PIX_CFG.KEY);
   const DESC = PIX_CFG.DESC ? emvField('02', PIX_CFG.DESC.substring(0,25)) : '';
   const MAI = emvField('26', GUI + KEY + DESC);
-
   const mcc = emvField('52','0000');
   const cur = emvField('53','986');
   const amt = emvField('54', Number(amount).toFixed(2));
   const cty = emvField('58','BR');
   const name = emvField('59', sanitizeASCII(PIX_CFG.MERCHANT).toUpperCase().substring(0,25) || 'BAR');
   const city = emvField('60', sanitizeASCII(PIX_CFG.CITY).toUpperCase().substring(0,15) || 'BRASIL');
-
   const tx = emvField('05', (txid||'COMANDA').toString().substring(0,25).replace(/[^A-Za-z0-9.-]/g,'-'));
   const add = emvField('62', tx);
-
-  const pfi = emvField('00','01');
-  const poi = emvField('01','11'); // estático
+  const pfi = emvField('00','01'); const poi = emvField('01','11');
   const noCRC = pfi + poi + MAI + mcc + cur + amt + cty + name + city + add + '6304';
   const crc = crc16(noCRC);
   return noCRC + crc;
@@ -391,11 +379,9 @@ function buildTicketHTML(c, totals, qrDataUrl = null){
     const line2 = `<tr><td></td><td class="name muted">(${BRL.format(i.unit)} un)</td><td></td></tr>`;
     return line1 + line2;
   }).join('');
-
   const qrBlock = (c.payMethod==='PIX' && qrDataUrl)
     ? `<img class="qr" src="${qrDataUrl}" alt="QR PIX"><div class="payload">${buildPixPayload(totals.total, c.id)}</div>`
     : '';
-
   return `
     <div class="ticket">
       <div class="title">${sanitizeASCII(PIX_CFG.MERCHANT)}</div>
@@ -415,7 +401,6 @@ function buildTicketHTML(c, totals, qrDataUrl = null){
       ${qrBlock}
       <div class="sep"></div>
       <div class="footer">Obrigado e volte sempre!</div>
-      <!-- feed extra para facilitar corte -->
       <div style="height:8mm"></div>
     </div>
   `;
@@ -428,41 +413,21 @@ async function printThermal80(){
     const payload = buildPixPayload(t.total, c.id);
     qrDataUrl = payload ? await makeQRDataURL(payload, 260) : null;
   }
-
   const html = buildTicketHTML(c, t, qrDataUrl);
-
-  // Abre janela temporária com o ticket + CSS e dispara impressão
   const w = window.open('', 'PRINT', 'width=420,height=720');
   if(!w){ alert('Pop-up bloqueado. Permita pop-ups para imprimir.'); return; }
-
   w.document.write(`<!doctype html><html><head>
-    <meta charset="utf-8">
-    <title>Imprimir Cupom</title>
+    <meta charset="utf-8"><title>Imprimir Cupom</title>
     <link rel="stylesheet" href="./assets/print.css">
-    <style>body{background:#fff}</style>
-  </head><body>${html}</body></html>`);
+    <style>body{background:#fff}</style></head><body>${html}</body></html>`);
   w.document.close();
-
-  const doPrint = () => {
-    try { w.focus(); w.print(); } catch(e) {}
-    setTimeout(()=>{ try{ w.close(); }catch(e){} }, 200);
-  };
-
-  // Aguarda imagens (QR) carregarem antes de imprimir
+  const doPrint = () => { try{ w.focus(); w.print(); }catch(e){} setTimeout(()=>{ try{ w.close(); }catch(e){} }, 200); };
   const imgs = w.document.images;
   if(imgs.length){
     let loaded = 0;
-    for(const img of imgs){
-      img.onload = img.onerror = () => {
-        loaded++;
-        if(loaded === imgs.length) doPrint();
-      };
-    }
-    // fallback timeout
+    for(const img of imgs){ img.onload = img.onerror = () => { loaded++; if(loaded===imgs.length) doPrint(); }; }
     setTimeout(doPrint, 1500);
-  } else {
-    doPrint();
-  }
+  } else { doPrint(); }
 }
 
 /* ========= Controles ========= */
@@ -505,7 +470,7 @@ function setActiveColor(){
   if(current){ c.color=current; persist(); renderDrawer(); renderOverview(); }
 }
 
-/* ========= Importar produtos ========= */
+/* Importar produtos */
 function importProductsFromFile(f){
   const reader = new FileReader();
   reader.onload = e=>{
@@ -522,8 +487,17 @@ function importProductsFromFile(f){
   reader.readAsText(f);
 }
 
-/* ========= Boot ========= */
+/* Modo toque grande */
+function applyBigTouch(){
+  document.body.classList.toggle('big-touch', !!state.bigTouch);
+  const b = $('#bigTouchBtn');
+  if(b){ b.textContent = state.bigTouch ? 'Toque grande: ON' : 'Toque grande'; b.setAttribute('aria-pressed', state.bigTouch?'true':'false'); }
+}
+
+/* Boot */
 function bindEvents(){
+  $('#bigTouchBtn').onclick = ()=>{ state.bigTouch = !state.bigTouch; persist(); applyBigTouch(); };
+
   $('#newComandaBtn').onclick = openNewModal;
   $('#cancelNew').onclick = ()=>$('#newModal').classList.remove('open');
   $('#createComandaConfirm').onclick = confirmNewComanda;
@@ -541,7 +515,7 @@ function bindEvents(){
 
   $('#shareBtn').onclick = shareComanda;
   $('#pdfBtn').onclick = generatePDF;
-  $('#print80Btn').onclick = printThermal80;     // <<< NOVO binding
+  $('#print80Btn').onclick = printThermal80;
   $('#clearItemsBtn').onclick = ()=>{ if(confirm('Limpar todos os itens?')) clearItems(); };
   $('#closeComandaBtn').onclick = closeComanda;
 
@@ -561,14 +535,12 @@ function bindEvents(){
     e.target.value='';
   });
 
-  // fechar modais clicando fora
-  $$('.modal').forEach(m=>{
-    m.addEventListener('click', (ev)=>{ if(ev.target===m) m.classList.remove('open'); });
-  });
+  $$('.modal').forEach(m=>{ m.addEventListener('click', (ev)=>{ if(ev.target===m) m.classList.remove('open'); }); });
 }
 async function boot(){
   loadPersisted();
   await loadProducts();
+  applyBigTouch();
   refreshChips(); refreshComandaSelect(); bindEvents(); renderGrid(); updateSummaryBar();
   if(!getActive()){ createComanda({name:'Mesa 1',color:'#22c55e'}); refreshComandaSelect(); }
 }
@@ -576,18 +548,18 @@ document.addEventListener('DOMContentLoaded', boot);
 
 /* ========= Produtos padrão ========= */
 const DEFAULT_PRODUCTS = [
-  { id:'cerveja_lata_350', name:'Cerveja Lata 350ml', price:12.00, category:'Cerveja' },
-  { id:'cerveja_long_neck', name:'Cerveja Long Neck', price:15.00, category:'Cerveja' },
-  { id:'cerveja_balde_6', name:'Balde 6 Cervejas', price:75.00, category:'Cerveja' },
-  { id:'dose_vodka', name:'Dose de Vodka', price:18.00, category:'Vodka' },
-  { id:'vodka_absolut', name:'Vodka Absolut 1L', price:220.00, category:'Vodka' },
-  { id:'dose_whiskey', name:'Dose de Whiskey', price:22.00, category:'Whiskey' },
-  { id:'whiskey_jameson', name:'Whiskey Jameson 750ml', price:260.00, category:'Whiskey' },
-  { id:'whiskey_jw_black', name:'Johnnie Walker Black 1L', price:320.00, category:'Whiskey' },
-  { id:'dose_tequila', name:'Dose de Tequila', price:20.00, category:'Doses' },
-  { id:'dose_cachaca', name:'Dose de Cachaça', price:8.00, category:'Doses' },
-  { id:'porcao_fritas', name:'Porção de Batata Frita', price:28.00, category:'Comidas' },
-  { id:'porcao_frango', name:'Porção de Frango a Passarinho', price:45.00, category:'Comidas' },
-  { id:'hamburguer', name:'Hambúrguer Artesanal', price:32.00, category:'Comidas' },
-  { id:'porcao_pastel', name:'Porção de Pastel (10 un.)', price:35.00, category:'Comidas' },
+  { id:'cerveja_lata_350', name:'Cerveja Lata 350ml', price:12.00, category:'Cerveja', image:'./assets/placeholder.svg' },
+  { id:'cerveja_long_neck', name:'Cerveja Long Neck', price:15.00, category:'Cerveja', image:'./assets/placeholder.svg' },
+  { id:'cerveja_balde_6', name:'Balde 6 Cervejas', price:75.00, category:'Cerveja', image:'./assets/placeholder.svg' },
+  { id:'dose_vodka', name:'Dose de Vodka', price:18.00, category:'Vodka', image:'./assets/placeholder.svg' },
+  { id:'vodka_absolut', name:'Vodka Absolut 1L', price:220.00, category:'Vodka', image:'./assets/placeholder.svg' },
+  { id:'dose_whiskey', name:'Dose de Whiskey', price:22.00, category:'Whiskey', image:'./assets/placeholder.svg' },
+  { id:'whiskey_jameson', name:'Whiskey Jameson 750ml', price:260.00, category:'Whiskey', image:'./assets/placeholder.svg' },
+  { id:'whiskey_jw_black', name:'Johnnie Walker Black 1L', price:320.00, category:'Whiskey', image:'./assets/placeholder.svg' },
+  { id:'dose_tequila', name:'Dose de Tequila', price:20.00, category:'Doses', image:'./assets/placeholder.svg' },
+  { id:'dose_cachaca', name:'Dose de Cachaça', price:8.00, category:'Doses', image:'./assets/placeholder.svg' },
+  { id:'porcao_fritas', name:'Porção de Batata Frita', price:28.00, category:'Comidas', image:'./assets/placeholder.svg' },
+  { id:'porcao_frango', name:'Porção de Frango a Passarinho', price:45.00, category:'Comidas', image:'./assets/placeholder.svg' },
+  { id:'hamburguer', name:'Hambúrguer Artesanal', price:32.00, category:'Comidas', image:'./assets/placeholder.svg' },
+  { id:'porcao_pastel', name:'Porção de Pastel (10 un.)', price:35.00, category:'Comidas', image:'./assets/placeholder.svg' }
 ];

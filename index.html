@@ -4,9 +4,8 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>Comandas — POS Simples</title>
-  <meta name="description" content="POS de comandas com PIX fixo, pagamento cartão (débito/crédito), PDF, visão geral e impressão térmica 80mm.">
+  <meta name="description" content="POS de comandas com PIX fixo, pagamento cartão, PDF, visão geral, impressão térmica 80mm, e modo toque grande.">
   <link rel="stylesheet" href="./assets/app.css"/>
-  <!-- NOVO: CSS específico de impressão térmica 80mm -->
   <link rel="stylesheet" href="./assets/print.css" media="print"/>
 
   <!-- Libs: jsPDF e QRCode (CDN) -->
@@ -22,6 +21,7 @@
       <div class="row">
         <h1>🧾 Comandas</h1>
         <div class="right row">
+          <button class="btn" id="bigTouchBtn" title="Aumentar áreas de toque">Toque grande</button>
           <select id="comandaSelect" class="select"></select>
           <button class="btn" id="overviewBtn" title="Visão geral">Visão geral</button>
           <button class="btn" id="newComandaBtn" title="Nova comanda">Nova</button>
@@ -89,7 +89,6 @@
 
       <div class="actions">
         <button class="btn" id="pixBtn" title="Gerar QR PIX do total">PIX do total</button>
-        <!-- NOVO: botão de impressão 80mm -->
         <button class="btn" id="print80Btn" title="Imprimir cupom térmico 80mm">Imprimir 80mm</button>
         <button class="btn warn" id="pdfBtn">Gerar PDF</button>
         <button class="btn" id="shareBtn">Compartilhar</button>
@@ -101,7 +100,7 @@
       <div id="pixModal" class="modal" aria-hidden="true">
         <div class="panel">
           <h3>PIX do total</h3>
-        <div class="mini">Use o QR abaixo para pagar o total desta comanda.</div>
+          <div class="mini">Use o QR abaixo para pagar o total desta comanda.</div>
           <div id="pixQR" class="centered"></div>
           <div class="form-row">
             <textarea id="pixPayload" class="input" rows="3" readonly></textarea>
