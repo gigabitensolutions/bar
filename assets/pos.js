@@ -35,7 +35,7 @@ let state = {
   service10: JSON.parse(localStorage.getItem(LS_KEYS.SERVICE) || 'false'),
 };
 
-/* ========= Persistência de comandas ========= */
+/* ========= Persistência ========= */
 function loadPersisted(){
   try{
     const c = JSON.parse(localStorage.getItem(LS_KEYS.COMANDAS) || '{}');
@@ -60,7 +60,6 @@ async function loadProducts(){
       return;
     }
   }catch(e){}
-  // fallback: embutidos
   state.products = DEFAULT_PRODUCTS;
   state.categories = ['Todos', ...Array.from(new Set(DEFAULT_PRODUCTS.map(p=>p.category)))];
 }
@@ -283,7 +282,6 @@ async function generatePDF(){
   doc.text(`Serviço (10%): ${BRL.format(t.service)}`,14,y); y+=6;
   doc.setFont(undefined,'bold'); doc.text(`Total: ${BRL.format(t.total)}`,14,y); doc.setFont(undefined,'normal'); y+=10;
 
-  // Se for PIX, insere QR no PDF
   if(c.payMethod==='PIX'){
     const payload = buildPixPayload(t.total, c.id);
     if(payload){
@@ -318,7 +316,7 @@ function buildPixPayload(amount, txid='COMANDA'){
   const GUI = emvField('00','BR.GOV.BCB.PIX');
   const KEY = emvField('01', PIX_CFG.KEY);
   const DESC = PIX_CFG.DESC ? emvField('02', PIX_CFG.DESC.substring(0,25)) : '';
-  const MAI = emvField('26', GUI + KEY + DESC); // Merchant Account Information (ID 26)
+  const MAI = emvField('26', GUI + KEY + DESC);
 
   const mcc = emvField('52','0000');
   const cur = emvField('53','986');
@@ -330,8 +328,8 @@ function buildPixPayload(amount, txid='COMANDA'){
   const tx = emvField('05', (txid||'COMANDA').toString().substring(0,25).replace(/[^A-Za-z0-9.-]/g,'-'));
   const add = emvField('62', tx);
 
-  const pfi = emvField('00','01'); // Payload Format Indicator
-  const poi = emvField('01','11'); // Point of Initiation Method (estático)
+  const pfi = emvField('00','01');
+  const poi = emvField('01','11'); // estático
   const noCRC = pfi + poi + MAI + mcc + cur + amt + cty + name + city + add + '6304';
   const crc = crc16(noCRC);
   return noCRC + crc;
@@ -355,7 +353,7 @@ function makeQRDataURL(text, size=200){
     setTimeout(()=>{
       const canvas = tgt.querySelector('canvas');
       resolve(canvas ? canvas.toDataURL('image/png') : null);
-    }, 100);
+    }, 120);
   });
 }
 
@@ -383,6 +381,88 @@ function renderOverview(){
     div.querySelector('[data-del]').onclick=()=>{ if(confirm(`Excluir ${c.name}?`)){ delete state.comandas[id]; persist(); renderOverview(); refreshComandaSelect(); updateSummaryBar(); } };
     board.appendChild(div);
   });
+}
+
+/* ========= Impressão térmica 80mm ========= */
+function buildTicketHTML(c, totals, qrDataUrl = null){
+  const created = new Date().toLocaleString('pt-BR');
+  const itemsRows = Object.values(c.items||{}).map(i=>{
+    const line1 = `<tr><td class="qty">${i.qty}x</td><td class="name">${i.name}</td><td class="amt">${BRL.format(i.unit*i.qty)}</td></tr>`;
+    const line2 = `<tr><td></td><td class="name muted">(${BRL.format(i.unit)} un)</td><td></td></tr>`;
+    return line1 + line2;
+  }).join('');
+
+  const qrBlock = (c.payMethod==='PIX' && qrDataUrl)
+    ? `<img class="qr" src="${qrDataUrl}" alt="QR PIX"><div class="payload">${buildPixPayload(totals.total, c.id)}</div>`
+    : '';
+
+  return `
+    <div class="ticket">
+      <div class="title">${sanitizeASCII(PIX_CFG.MERCHANT)}</div>
+      <div class="meta">
+        COMANDA: ${sanitizeASCII(c.name)}${c.label?` [${sanitizeASCII(c.label)}]`:''}<br/>
+        DATA: ${created}<br/>
+        PAGAMENTO: ${sanitizeASCII(c.payMethod)}
+      </div>
+      <div class="sep"></div>
+      <table class="items">${itemsRows}</table>
+      <div class="sep"></div>
+      <div class="totals">
+        <div class="row"><span>Subtotal</span><strong>${BRL.format(totals.subtotal)}</strong></div>
+        <div class="row"><span>Serviço (10%)</span><strong>${BRL.format(totals.service)}</strong></div>
+        <div class="row"><span>Total</span><strong>${BRL.format(totals.total)}</strong></div>
+      </div>
+      ${qrBlock}
+      <div class="sep"></div>
+      <div class="footer">Obrigado e volte sempre!</div>
+      <!-- feed extra para facilitar corte -->
+      <div style="height:8mm"></div>
+    </div>
+  `;
+}
+async function printThermal80(){
+  const c = getActive(); if(!c) return alert('Nenhuma comanda ativa.');
+  const t = calc(c);
+  let qrDataUrl = null;
+  if(c.payMethod==='PIX'){
+    const payload = buildPixPayload(t.total, c.id);
+    qrDataUrl = payload ? await makeQRDataURL(payload, 260) : null;
+  }
+
+  const html = buildTicketHTML(c, t, qrDataUrl);
+
+  // Abre janela temporária com o ticket + CSS e dispara impressão
+  const w = window.open('', 'PRINT', 'width=420,height=720');
+  if(!w){ alert('Pop-up bloqueado. Permita pop-ups para imprimir.'); return; }
+
+  w.document.write(`<!doctype html><html><head>
+    <meta charset="utf-8">
+    <title>Imprimir Cupom</title>
+    <link rel="stylesheet" href="./assets/print.css">
+    <style>body{background:#fff}</style>
+  </head><body>${html}</body></html>`);
+  w.document.close();
+
+  const doPrint = () => {
+    try { w.focus(); w.print(); } catch(e) {}
+    setTimeout(()=>{ try{ w.close(); }catch(e){} }, 200);
+  };
+
+  // Aguarda imagens (QR) carregarem antes de imprimir
+  const imgs = w.document.images;
+  if(imgs.length){
+    let loaded = 0;
+    for(const img of imgs){
+      img.onload = img.onerror = () => {
+        loaded++;
+        if(loaded === imgs.length) doPrint();
+      };
+    }
+    // fallback timeout
+    setTimeout(doPrint, 1500);
+  } else {
+    doPrint();
+  }
 }
 
 /* ========= Controles ========= */
@@ -425,7 +505,7 @@ function setActiveColor(){
   if(current){ c.color=current; persist(); renderDrawer(); renderOverview(); }
 }
 
-/* ========= Importar produtos (JSON) ========= */
+/* ========= Importar produtos ========= */
 function importProductsFromFile(f){
   const reader = new FileReader();
   reader.onload = e=>{
@@ -461,6 +541,7 @@ function bindEvents(){
 
   $('#shareBtn').onclick = shareComanda;
   $('#pdfBtn').onclick = generatePDF;
+  $('#print80Btn').onclick = printThermal80;     // <<< NOVO binding
   $('#clearItemsBtn').onclick = ()=>{ if(confirm('Limpar todos os itens?')) clearItems(); };
   $('#closeComandaBtn').onclick = closeComanda;
 
