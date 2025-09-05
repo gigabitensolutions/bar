@@ -1,51 +1,51 @@
-/* assets/app.css — estilos mínimos e responsivos */
+/* assets/app.css — estilos para POS */
 :root{
-  --bg: #0b1220;
-  --card: #0f172a;
-  --muted: #94a3b8;
-  --text: #e2e8f0;
-  --accent: #22c55e;
-  --danger: #ef4444;
-  --border: #22304a;
+  --bg:#0b1220; --card:#0f172a; --muted:#94a3b8; --text:#e2e8f0;
+  --accent:#22c55e; --danger:#ef4444; --border:#22304a;
 }
-
-*{ box-sizing:border-box; }
-html,body{ margin:0; padding:0; background:var(--bg); color:var(--text); font-family: system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,"Helvetica Neue",Arial,"Noto Sans",sans-serif; }
-
-a,button,input,select{ font:inherit; }
-
-.wrap{ width:100%; max-width:1100px; margin:0 auto; padding:12px; }
-header{ border-bottom:1px solid var(--border); position:sticky; top:0; background:rgba(11,18,32,.9); backdrop-filter: blur(6px); z-index:10; }
-.row{ display:flex; align-items:center; gap:8px; }
-.right{ margin-left:auto; }
-h1{ font-size:20px; margin:0; }
-h2{ font-size:16px; margin:0 0 8px; color:#cbd5e1; }
-
-.tag{ padding:4px 8px; border:1px solid #64748b; color:#64748b; border-radius:999px; font-size:12px; }
-.btn{ background:#1f2937; color:#e5e7eb; border:1px solid var(--border); border-radius:10px; padding:10px 14px; cursor:pointer; }
-.btn:hover{ filter:brightness(1.1); }
-.btn.ghost{ background:transparent; }
-.btn.accent{ background:var(--accent); color:#001b07; border-color:#16a34a; }
-.btn.danger{ background:#3a0d12; border-color:#7f1d1d; color:#fecaca; }
-.input, .select{ background:#0b1220; border:1px solid var(--border); border-radius:10px; padding:10px 12px; color:var(--text); width:100%; }
-.toolbar{ display:flex; gap:8px; margin-top:10px; }
-
-.grid{ display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap:10px; padding:12px; }
-@media(min-width:700px){ .grid{ grid-template-columns: repeat(4, minmax(0,1fr)); } }
-
-.card{ background:var(--card); border:1px solid var(--border); border-radius:14px; padding:12px; }
-.product{ display:flex; gap:12px; align-items:center; }
-.product img{ width:56px; height:56px; border-radius:10px; object-fit:cover; border:1px solid rgba(148,163,184,.25); }
-.product .name{ font-weight:600; }
-.product .price{ color:#c7f9cc; }
-
-.table{ width:100%; border-collapse: collapse; background:var(--card); border:1px solid var(--border); border-radius:12px; overflow:hidden; }
-.table th, .table td{ padding:10px; border-bottom:1px solid var(--border); text-align:left; font-size:14px; }
-.table thead th{ color:#cbd5e1; background:#0b1220; }
-.form-row{ display:flex; flex-direction:column; gap:6px; margin-bottom:8px; }
-.grid-2{ display:grid; grid-template-columns:1fr; gap:10px; }
-@media(min-width:720px){ .grid-2{ grid-template-columns:1fr 1fr; } }
-
-.muted{ color:var(--muted); font-size:12px; }
-.hidden{ display:none; }
-.footer{ color:#94a3b8; font-size:12px; text-align:center; padding:18px; border-top:1px solid var(--border); }
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,"Helvetica Neue",Arial,"Noto Sans",sans-serif}
+.wrap{width:100%;max-width:1100px;margin:0 auto;padding:12px}
+header{position:sticky;top:0;background:rgba(11,18,32,.9);backdrop-filter:blur(6px);border-bottom:1px solid var(--border);z-index:10}
+.row{display:flex;align-items:center;gap:8px}
+.right{margin-left:auto}
+h1{font-size:20px;margin:0}
+h2{font-size:16px;margin:0 0 8px;color:#cbd5e1}
+.tag{padding:4px 8px;border:1px solid #64748b;color:#64748b;border-radius:999px;font-size:12px}
+.btn{background:#1f2937;color:#e5e7eb;border:1px solid var(--border);border-radius:12px;padding:12px 16px;cursor:pointer}
+.btn:hover{filter:brightness(1.1)}
+.btn.ghost{background:transparent}
+.btn.accent{background:var(--accent);color:#001b07;border-color:#16a34a}
+.btn.danger{background:#3a0d12;border-color:#7f1d1d;color:#fecaca}
+.input,.select{background:#0b1220;border:1px solid var(--border);border-radius:12px;padding:12px 12px;color:var(--text);width:100%}
+.toolbar{display:flex;gap:8px;margin-top:10px}
+.chips{display:flex;gap:8px;flex-wrap:wrap;padding:10px 0}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding:12px}
+@media(min-width:700px){.grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px}
+.product{display:flex;gap:12px;align-items:center}
+.product img{width:56px;height:56px;border-radius:10px;object-fit:cover;border:1px solid rgba(148,163,184,.25)}
+.product .name{font-weight:600}
+.product .price{color:#c7f9cc}
+.tap{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+.bar{position:sticky;bottom:0;left:0;right:0;background:rgba(11,18,32,.95);border-top:1px solid var(--border);padding:10px}
+.bar-inner{display:flex;align-items:center;gap:10px;justify-content:space-between;max-width:1100px;margin:0 auto}
+.price{font-weight:700}
+#drawer .line{align-items:center;gap:10px;margin-bottom:8px}
+.form-row{display:flex;flex-direction:column;gap:6px;margin-top:6px}
+.table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+.table th,.table td{padding:10px;border-bottom:1px solid var(--border);text-align:left;font-size:14px}
+.table thead th{color:#cbd5e1;background:#0b1220}
+.muted{color:var(--muted);font-size:12px}
+dialog{border:none;border-radius:12px;padding:0;background:transparent}
+dialog::backdrop{background:rgba(0,0,0,.6)}
+.modal{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px;max-width:900px;width:min(96vw,900px)}
+.modal .head{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.modal .body{max-height:70vh;overflow:auto}
+/* 80mm ticket for print */
+#printArea{position:fixed;left:-10000px;top:-10000px}
+.ticket{width:80mm;padding:6mm;font-family:monospace;background:#fff;color:#000}
+.ticket h3{margin:0 0 6px 0;text-align:center}
+.ticket .trow{display:flex;justify-content:space-between;margin:4px 0}
+.ticket hr{border:0;border-top:1px dashed #000;margin:6px 0}
+.ticket .total{font-weight:700}
