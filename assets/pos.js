@@ -80,10 +80,14 @@ function createComanda({name,label,color}){
   const id = uid();
   state.comandas[id] = {
     id, name, label: label || '', color: color || '#3b82f6',
-    createdAt: Date.now(), payMethod: 'PIX', items:{}
+    createdAt: Date.now(), payMethod: 'PIX', service10: !!state.service10,
+    status: 'open',
+    items:{}
   };
   state.activeComandaId = id;
   persist(); refreshComandaSelect(); updateSummaryBar();
+  // DB
+  if(window.DB?.enabled){ window.DB.upsertTab(state.comandas[id]).catch(()=>{}); }
   return id;
 }
 function getActive(){ return state.activeComandaId ? state.comandas[state.activeComandaId] : null; }
@@ -92,13 +96,16 @@ function deleteActive(){
   const c = getActive(); if(!c) return;
   if(confirm(`Excluir comanda "${c.name}"?`)){
     delete state.comandas[c.id];
+    if(window.DB?.enabled){ window.DB.deleteTab(c.id).catch(()=>{}); }
     state.activeComandaId = Object.keys(state.comandas)[0] || null;
     persist(); refreshComandaSelect(); updateSummaryBar();
   }
 }
 function clearItems(){
   const c = getActive(); if(!c) return;
-  c.items = {}; persist(); updateSummaryBar(); if($('#drawer').classList.contains('open')) renderDrawer();
+  c.items = {}; persist();
+  if(window.DB?.enabled){ window.DB.upsertTab(getActive()).catch(()=>{}); }
+  updateSummaryBar(); if($('#drawer').classList.contains('open')) renderDrawer();
 }
 
 /* ========= Histórico ========= */
@@ -201,7 +208,6 @@ function renderHistorySummary(stats){
   `;
   $('#historySummary').innerHTML = html;
 }
-
 function populateHistLabel(){
   const sel = $('#histLabel');
   if(!sel) return;
@@ -215,13 +221,11 @@ function populateHistLabel(){
     sel.appendChild(opt);
   });
 }
-
 function renderHistory(){
   const board = $('#historyBoard'); board.innerHTML='';
   const list = filterHistory();
   lastHistoryView = list.slice();
 
-  // totalizadores
   const stats = calcPeriodTotals(list);
   renderHistorySummary(stats);
 
@@ -229,7 +233,6 @@ function renderHistory(){
     board.innerHTML = '<div class="muted">Nenhum registro neste período.</div>';
     return;
   }
-
   list.forEach(rec=>{
     const div = document.createElement('div'); div.className='tile';
     const date = new Date(rec.closedAt).toLocaleString('pt-BR');
@@ -285,6 +288,7 @@ function toggleReverseRecord(number){
   rec.reversed = !rec.reversed;
   rec.reversedAt = rec.reversed ? Date.now() : null;
   persist();
+  if(window.DB?.enabled){ window.DB.saveHistory(rec).catch(()=>{}); }
   renderHistory();
 }
 function reopenFromRecord(rec){
@@ -301,7 +305,9 @@ function reopenFromRecord(rec){
     c.items[key] = { id: key, name: i.name, unit: i.unit, qty: i.qty };
   });
   state.service10 = !!rec.service10;
+  c.service10 = state.service10;
   persist();
+  if(window.DB?.enabled){ window.DB.upsertTab(c).catch(()=>{}); }
   updateSummaryBar();
   $('#historyModal').classList.remove('open');
   $('#drawer').classList.add('open');
@@ -316,12 +322,21 @@ function closeComanda(){
   if(!hasItems){
     if(confirm(`A comanda "${c.name}" está vazia. Deseja apenas zerar sem registrar no histórico?`)){
       c.items = {}; persist(); renderDrawer(); updateSummaryBar();
+      if(window.DB?.enabled){ window.DB.upsertTab(c).catch(()=>{}); }
     }
     return;
   }
   if(confirm(`Fechar comanda "${c.name}" e registrar no histórico como PAGA?`)){
     const snap = archiveComandaSnapshot(c);
-    c.items = {}; persist(); renderDrawer(); updateSummaryBar();
+    c.items = {};
+    c.status = 'closed';
+    c.closedAt = snap.closedAt;
+    persist(); renderDrawer(); updateSummaryBar();
+
+    if(window.DB?.enabled){
+      window.DB.saveHistory(snap).catch(()=>{});
+      window.DB.upsertTab(c).catch(()=>{});
+    }
     alert(`Comanda fechada! Registro #${pad4(snap.number)} criado no histórico.`);
   }
 }
@@ -354,6 +369,9 @@ function addToComanda(product, qty=1){
   current.qty += qty;
   if(current.qty<=0) delete c.items[product.id]; else c.items[product.id] = current;
   persist(); updateSummaryBar();
+  // DB sync
+  const fresh = getActive();
+  if(window.DB?.enabled && fresh){ window.DB.upsertTab(fresh).catch(()=>{}); }
 }
 function renderGrid(){
   const grid = $('#grid'); const list = state.products.filter(passFilters);
@@ -420,6 +438,7 @@ function renderPayMethods(){
     b.textContent = method;
     b.onclick = ()=>{
       c.payMethod = method; persist();
+      if(window.DB?.enabled){ window.DB.upsertTab(c).catch(()=>{}); }
       renderPayMethods(); togglePixButton();
     };
     cont.appendChild(b);
@@ -444,8 +463,8 @@ function renderDrawer(){
           <button class="btn" data-inc>+</button>
           <strong>${BRL.format(i.unit*i.qty)}</strong>
         </div>`;
-      line.querySelector('[data-dec]').onclick=()=>{ i.qty=Math.max(0,i.qty-1); if(i.qty===0) delete c.items[i.id]; persist(); renderDrawer(); updateSummaryBar(); };
-      line.querySelector('[data-inc]').onclick=()=>{ i.qty+=1; persist(); renderDrawer(); updateSummaryBar(); };
+      line.querySelector('[data-dec]').onclick=()=>{ i.qty=Math.max(0,i.qty-1); if(i.qty===0) delete c.items[i.id]; persist(); renderDrawer(); updateSummaryBar(); if(window.DB?.enabled){ window.DB.upsertTab(getActive()).catch(()=>{}); } };
+      line.querySelector('[data-inc]').onclick=()=>{ i.qty+=1; persist(); renderDrawer(); updateSummaryBar(); if(window.DB?.enabled){ window.DB.upsertTab(getActive()).catch(()=>{}); } };
       cont.appendChild(line);
     });
   }
@@ -584,12 +603,10 @@ async function exportHistoryPDF(){
   const doc = new jsPDF();
   let y = 14;
 
-  // Cabeçalho
   doc.setFontSize(14);
   doc.text('Relatório de Comandas', 14, y); y += 7;
   doc.setFontSize(11);
 
-  // Descrição dos filtros
   const {from,to} = getHistoryFilterRange();
   const {pay,label} = getHistoryExtraFilters();
   const fmt = ts => (ts===0||ts===Number.MAX_SAFE_INTEGER) ? '—' : new Date(ts).toLocaleDateString('pt-BR');
@@ -598,14 +615,12 @@ async function exportHistoryPDF(){
   doc.text(`Período: ${fmt(from)} a ${fmt(to)} • Pagamento: ${payTxt} • Etiqueta: ${labelTxt}`, 14, y);
   y += 8;
 
-  // Totalizadores
   doc.text(`Comandas (válidas): ${stats.count}  •  Estornadas: ${stats.reversedCount}`, 14, y); y+=6;
   doc.text(`Subtotal: ${BRL.format(stats.subtotal)}  •  Serviço: ${BRL.format(stats.service)}  •  Total: ${BRL.format(stats.total)}`, 14, y); y+=6;
   doc.text(`Ticket médio: ${BRL.format(stats.avg)}`, 14, y); y+=8;
   doc.text(`Por método — PIX: ${BRL.format(stats.byMethod['PIX'])} | Débito: ${BRL.format(stats.byMethod['Cartão de Débito'])} | Crédito: ${BRL.format(stats.byMethod['Cartão de Crédito'])}`, 14, y);
   y += 10;
 
-  // Lista (simples)
   doc.setFont(undefined,'bold'); doc.text('Registros', 14, y); doc.setFont(undefined,'normal'); y+=6;
   if(!data.length){
     doc.text('Nenhum registro no período/filtro.', 14, y);
@@ -696,8 +711,8 @@ function renderOverview(){
         <button class="btn danger" data-del>Excluir</button>
       </div>`;
     div.querySelector('[data-open]').onclick=()=>{ setActive(id); $('#overviewModal').classList.remove('open'); updateSummaryBar(); };
-    div.querySelector('[data-clear]').onclick=()=>{ state.comandas[id].items={}; persist(); renderOverview(); updateSummaryBar(); };
-    div.querySelector('[data-del]').onclick=()=>{ if(confirm(`Excluir ${c.name}?`)){ delete state.comandas[id]; persist(); renderOverview(); refreshComandaSelect(); updateSummaryBar(); } };
+    div.querySelector('[data-clear]').onclick=()=>{ state.comandas[id].items={}; persist(); if(window.DB?.enabled){ window.DB.upsertTab(state.comandas[id]).catch(()=>{}); } renderOverview(); updateSummaryBar(); };
+    div.querySelector('[data-del]').onclick=()=>{ if(confirm(`Excluir ${c.name}?`)){ delete state.comandas[id]; persist(); if(window.DB?.enabled){ window.DB.deleteTab(id).catch(()=>{}); } renderOverview(); refreshComandaSelect(); updateSummaryBar(); } };
     board.appendChild(div);
   });
 }
@@ -805,7 +820,7 @@ function setActiveColor(){
   const c=getActive(); if(!c) return;
   const pal=['#3b82f6','#22c55e','#ef4444','#f59e0b','#8b5cf6','#06b6d4','#e11d48','#10b981','#a3e635','#f97316'];
   const current = prompt(`Informe a cor (hex) ou escolha: \n${pal.join(' ')}`, c.color);
-  if(current){ c.color=current; persist(); renderDrawer(); renderOverview(); }
+  if(current){ c.color=current; persist(); if(window.DB?.enabled){ window.DB.upsertTab(c).catch(()=>{}); } renderDrawer(); renderOverview(); }
 }
 function importProductsFromFile(f){
   const reader = new FileReader();
@@ -816,6 +831,9 @@ function importProductsFromFile(f){
       localStorage.setItem(LS_KEYS.PRODUCTS, JSON.stringify(arr));
       state.products = arr;
       state.categories = ['Todos', ...Array.from(new Set(arr.map(p=>p.category)))];
+      if(window.DB?.enabled){
+        Promise.all(arr.map(p=> window.DB.setProduct(p))).catch(()=>{});
+      }
       refreshChips(); renderGrid();
       alert('Produtos importados!');
     }catch(err){ alert('Erro ao importar: '+err.message); }
@@ -837,7 +855,6 @@ function bindEvents(){
   };
   $('#closeHistoryBtn').onclick = ()=>$('#historyModal').classList.remove('open');
 
-  // filtros do histórico
   $('#histRange').onchange = ()=>{
     const v = $('#histRange').value;
     const isCustom = v==='custom';
@@ -850,7 +867,6 @@ function bindEvents(){
   $('#histPay').onchange = renderHistory;
   $('#histLabel').onchange = renderHistory;
 
-  // exportações
   $('#exportHistoryJSON').onclick = exportHistoryJSON;
   $('#exportHistoryCSV').onclick = exportHistoryCSV;
   $('#exportHistoryPDF').onclick = exportHistoryPDF;
@@ -897,6 +913,35 @@ function bindEvents(){
 async function boot(){
   loadPersisted();
   await loadProducts();
+
+  // ====== Carrega do DB (se configurado) ======
+  if(window.DB?.enabled){
+    try{
+      const remoteProducts = await window.DB.getProducts();
+      if(Array.isArray(remoteProducts) && remoteProducts.length){
+        state.products = remoteProducts;
+        state.categories = ['Todos', ...Array.from(new Set(remoteProducts.map(p=>p.category)))];
+        localStorage.setItem(LS_KEYS.PRODUCTS, JSON.stringify(remoteProducts));
+      }
+    }catch(e){ console.warn('Produtos DB:', e); }
+
+    try{
+      const tabs = await window.DB.getOpenTabs();
+      tabs.forEach(t=>{ state.comandas[t.id] = t; });
+      if(tabs.length && !state.activeComandaId){ state.activeComandaId = tabs[0].id; }
+      persist();
+    }catch(e){ console.warn('Comandas DB:', e); }
+
+    try{
+      const hist = await window.DB.getHistory();
+      if(Array.isArray(hist) && hist.length){
+        state.history = hist.sort((a,b)=>b.closedAt - a.closedAt);
+        state.hseq = Math.max(state.hseq, (hist[0]?.number||0)+1);
+        persist();
+      }
+    }catch(e){ console.warn('Histórico DB:', e); }
+  }
+
   applyBigTouch();
   refreshChips(); refreshComandaSelect(); bindEvents(); renderGrid(); updateSummaryBar();
   if(!getActive()){ createComanda({name:'Mesa 1',color:'#22c55e'}); refreshComandaSelect(); }

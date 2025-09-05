@@ -2,13 +2,20 @@ const LS_KEY='products_cache_v1';
 const $=s=>document.querySelector(s);
 let data=[];
 
-function load(){
+async function load(){
   try{
+    if(window.DB?.enabled){
+      data = await window.DB.getProducts();
+      if(Array.isArray(data) && data.length){
+        localStorage.setItem(LS_KEY, JSON.stringify(data));
+        render(); return;
+      }
+    }
     const cached = JSON.parse(localStorage.getItem(LS_KEY)||'[]');
     data = Array.isArray(cached)? cached : [];
   }catch(e){ data=[]; }
 }
-function save(){ localStorage.setItem(LS_KEY, JSON.stringify(data)); }
+function saveLocal(){ localStorage.setItem(LS_KEY, JSON.stringify(data)); }
 function render(){
   const tb = document.querySelector('#tbl tbody'); tb.innerHTML='';
   data.forEach(p=>{
@@ -21,19 +28,17 @@ function render(){
       <td>R$ ${Number(p.price).toFixed(2)}</td>
       <td>${p.category}</td>`;
     tr.onclick=()=>{
-      $('#pId').value=p.id;
-      $('#pName').value=p.name;
+      $('#pId').value=p.id; $('#pName').value=p.name;
       $('#pPrice').value=Number(p.price).toFixed(2);
-      $('#pCat').value=p.category;
-      $('#pImg').value=p.image||'';
+      $('#pCat').value=p.category; $('#pImg').value=p.image||'';
     };
     tb.appendChild(tr);
   });
 }
-function upsert(){
+async function upsert(){
   const id=$('#pId').value.trim();
   const name=$('#pName').value.trim();
-  const price=Number($('#pPrice').value.replace(',','.'));
+  const price=Number(String($('#pPrice').value).replace(',','.'));
   const category=$('#pCat').value.trim();
   const image=$('#pImg').value.trim();
   if(!id||!name||!category||!(price>=0)) return alert('Preencha id, nome, preço e categoria.');
@@ -41,12 +46,14 @@ function upsert(){
   const i = data.findIndex(x=>x.id===id);
   if(i>=0) data[i]=rec; else data.push(rec);
   render(); clearForm();
+  saveLocal();
+  if(window.DB?.enabled){ try{ await window.DB.setProduct(rec); }catch(e){ console.warn(e); } }
 }
-function del(){
-  const id=$('#pId').value.trim();
-  if(!id) return;
+async function del(){
+  const id=$('#pId').value.trim(); if(!id) return;
   data = data.filter(p=>p.id!==id);
-  render(); clearForm();
+  render(); clearForm(); saveLocal();
+  if(window.DB?.enabled){ try{ await window.DB.deleteProduct(id); }catch(e){ console.warn(e); } }
 }
 function clearForm(){ $('#pId').value=''; $('#pName').value=''; $('#pPrice').value=''; $('#pCat').value=''; $('#pImg').value=''; }
 
@@ -56,21 +63,22 @@ function exportJSON(){
 }
 function importJSON(file){
   const r=new FileReader();
-  r.onload=e=>{
+  r.onload=async e=>{
     try{
       const arr=JSON.parse(e.target.result);
       if(!Array.isArray(arr)) throw new Error('JSON deve ser um array de produtos.');
-      data=arr; render(); alert('Importado!');
+      data=arr; render(); saveLocal(); alert('Importado!');
+      if(window.DB?.enabled){ await Promise.all(arr.map(p=>window.DB.setProduct(p))); }
     }catch(err){ alert('Erro: '+err.message); }
   };
   r.readAsText(file);
 }
 
-document.addEventListener('DOMContentLoaded',()=>{
-  load(); render();
+document.addEventListener('DOMContentLoaded',async ()=>{
+  await load(); render();
   $('#addBtn').onclick=upsert;
   $('#delBtn').onclick=del;
-  $('#saveBtn').onclick=()=>{ save(); alert('Salvo no POS! Abra o index.html/atualize a página.'); };
+  $('#saveBtn').onclick=()=>{ saveLocal(); alert('Salvo localmente/DB se habilitado.'); };
   $('#exportBtn').onclick=exportJSON;
   $('#importBtn').onclick=()=>$('#fileInput').click();
   $('#fileInput').addEventListener('change',e=>{ const f=e.target.files?.[0]; if(f) importJSON(f); e.target.value=''; });
