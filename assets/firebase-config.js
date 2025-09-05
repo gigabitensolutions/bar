@@ -8,5 +8,5 @@ window.FIREBASE_CONFIG = {
     messagingSenderId: "747143123116",
     appId: "1:747143123116:web:662dba319e1be7c47d0f09"
   /* Identificador do seu bar/loja (multi-tenant simples) */
-  TENANT_ID: "espetaria"  // pode ser "bar_centro", "unidade_01", etc.
+  TENANT_ID: "default"  // pode ser "bar_centro", "unidade_01", etc.
 };
