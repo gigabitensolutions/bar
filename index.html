@@ -19,11 +19,19 @@
           <span id="dbStatus" class="tag">DB: —</span>
           <button id="historyBtn" class="btn">Histórico</button>
           <select id="comandaSelect" class="select" style="min-width:160px"></select>
-          <button id="newComandaBtn" class="btn">Nova</button>
           <button id="deleteComandaBtn" class="btn danger">Excluir</button>
           <a class="btn ghost" href="./admin.html">Admin</a>
         </div>
       </div>
+
+      <!-- Nova comanda inline (sem popups) -->
+      <div class="newc">
+        <input id="ncName" class="input" placeholder="Nome da comanda (ex.: Mesa 1)" value="Mesa 1">
+        <input id="ncLabel" class="input" placeholder="Etiqueta (opcional)" >
+        <div class="swatches span2" id="swatches"></div>
+        <button id="ncAdd" class="btn accent">Nova comanda</button>
+      </div>
+
       <div class="toolbar">
         <input id="search" class="input" placeholder="Buscar produto…"/>
         <button id="clearSearch" class="btn ghost">Limpar</button>
@@ -63,7 +71,7 @@
       <div class="body" style="display:flex;gap:16px;align-items:center;justify-content:center;flex-wrap:wrap">
         <div id="qrBox"></div>
         <div>
-          <div class="muted">Escaneie o QR</div>
+          <div class="muted">Escaneie o QR (BR Code)</div>
           <div><strong id="pixTotal">R$ 0,00</strong></div>
         </div>
       </div>
@@ -109,5 +117,18 @@
   <script src="./assets/firebase-config.js"></script>
   <script src="./assets/db.firebase.js"></script>
   <script src="./assets/pos.js"></script>
+  <script>
+    // Build color swatches UI
+    (function(){
+      const colors = ['#22c55e','#3b82f6','#f59e0b','#ef4444','#a855f7','#14b8a6','#64748b'];
+      const box = document.getElementById('swatches');
+      colors.forEach((c,i)=>{
+        const b = document.createElement('button');
+        b.className='swatch' + (i===0 ? ' active' : '');
+        b.style.background = c; b.dataset.color = c;
+        box.appendChild(b);
+      });
+    })();
+  </script>
 </body>
 </html>

@@ -1,4 +1,4 @@
-// assets/admin.js — unchanged logic
+// assets/admin.js — CRUD de Produtos
 (function(){
   const $ = s => document.querySelector(s);
   const BRL = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -11,8 +11,8 @@
     else if(info && info.ok && info.canReadServer){ text='DB: OK'; ok=true; }
     else if(info && info.ok === false){ text='DB: ERRO'; ok=false; }
     el.textContent = text;
-    el.classList.toggle('is-ok', !!(info && info.ok && info.canReadServer));
-    el.classList.toggle('is-err', !!(info && info.ok===false));
+    el.classList.toggle('ok', !!(info && info.ok && info.canReadServer));
+    el.classList.toggle('err', !!(info && info.ok===false));
   }
   async function health(){
     try{ const r = await window.DB.healthCheck(); setDBStatus($('#dbStatusAdmin'), r); }
