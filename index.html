@@ -15,7 +15,7 @@
   <!-- Firebase (compat) + config + wrapper DB -->
   <script defer src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script defer src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
-  <script defer src="./assets/firebase-config.js"></script> <!-- renomeie o sample -->
+  <script defer src="./assets/firebase-config.js"></script> <!-- RENOMEIE o sample -->
   <script defer src="./assets/db.firebase.js"></script>
 
   <!-- App -->
@@ -26,7 +26,8 @@
     <div class="wrap">
       <div class="row">
         <h1>🧾 Comandas</h1>
-        <div class="right row">
+        <div class="right row" style="gap:8px">
+          <span id="dbStatus" class="tag">DB: —</span>
           <button class="btn" id="bigTouchBtn" title="Aumentar áreas de toque">Toque grande</button>
           <button class="btn" id="historyBtn" title="Ver histórico">Histórico</button>
           <select id="comandaSelect" class="select"></select>
@@ -182,7 +183,6 @@
 
         <select id="histLabel" class="select" title="Etiqueta">
           <option value="all" selected>Todas as etiquetas</option>
-          <!-- opções dinâmicas: "Sem etiqueta (—)" e etiquetas únicas -->
         </select>
 
         <button class="btn" id="exportHistoryJSON">Exportar JSON</button>

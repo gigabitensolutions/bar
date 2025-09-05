@@ -11,7 +11,8 @@
     <div class="wrap">
       <div class="row">
         <h1>🧰 Admin de Produtos</h1>
-        <div class="right row">
+        <div class="right row" style="gap:8px">
+          <span id="dbStatusAdmin" class="tag">DB: —</span>
           <a class="btn ghost" href="./index.html">Voltar</a>
         </div>
       </div>
@@ -46,7 +47,6 @@
       <div class="row" style="margin-top:8px">
         <button class="btn accent" id="addBtn">Salvar/Atualizar</button>
         <button class="btn danger" id="delBtn">Excluir</button>
-        <button class="btn" id="saveBtn">Salvar local</button>
         <button class="btn" id="exportBtn">Exportar JSON</button>
         <button class="btn" id="importBtn">Importar JSON</button>
         <input id="fileInput" type="file" accept="application/json" class="hidden">

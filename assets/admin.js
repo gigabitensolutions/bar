@@ -1,21 +1,30 @@
-const LS_KEY='products_cache_v1';
 const $=s=>document.querySelector(s);
 let data=[];
 
-async function load(){
-  try{
-    if(window.DB?.enabled){
-      data = await window.DB.getProducts();
-      if(Array.isArray(data) && data.length){
-        localStorage.setItem(LS_KEY, JSON.stringify(data));
-        render(); return;
-      }
-    }
-    const cached = JSON.parse(localStorage.getItem(LS_KEY)||'[]');
-    data = Array.isArray(cached)? cached : [];
-  }catch(e){ data=[]; }
+function setDBStatus(el, info){
+  if(!el) return;
+  if(!window.DB?.enabled){
+    el.textContent = 'DB: OFF';
+    el.style.borderColor = '#ef4444'; el.style.color = '#ef4444';
+    return;
+  }
+  const ok = !!info?.rulesOk;
+  el.textContent = ok ? 'DB: OK' : 'DB: ERRO';
+  el.style.borderColor = ok ? '#22c55e' : '#ef4444';
+  el.style.color = ok ? '#22c55e' : '#ef4444';
 }
-function saveLocal(){ localStorage.setItem(LS_KEY, JSON.stringify(data)); }
+
+async function health(){
+  if(!window.DB?.enabled){ setDBStatus($('#dbStatusAdmin')); return; }
+  const r = await window.DB.healthCheck();
+  setDBStatus($('#dbStatusAdmin'), r);
+}
+
+async function load(){
+  if(!window.DB?.enabled){ alert('Firebase não configurado.'); data=[]; return; }
+  data = await window.DB.getProducts();
+}
+
 function render(){
   const tb = document.querySelector('#tbl tbody'); tb.innerHTML='';
   data.forEach(p=>{
@@ -35,7 +44,9 @@ function render(){
     tb.appendChild(tr);
   });
 }
+
 async function upsert(){
+  if(!window.DB?.enabled) return alert('DB indisponível.');
   const id=$('#pId').value.trim();
   const name=$('#pName').value.trim();
   const price=Number(String($('#pPrice').value).replace(',','.'));
@@ -43,18 +54,20 @@ async function upsert(){
   const image=$('#pImg').value.trim();
   if(!id||!name||!category||!(price>=0)) return alert('Preencha id, nome, preço e categoria.');
   const rec={id,name,price,category,image};
+  await window.DB.setProduct(rec);
   const i = data.findIndex(x=>x.id===id);
   if(i>=0) data[i]=rec; else data.push(rec);
   render(); clearForm();
-  saveLocal();
-  if(window.DB?.enabled){ try{ await window.DB.setProduct(rec); }catch(e){ console.warn(e); } }
 }
+
 async function del(){
+  if(!window.DB?.enabled) return alert('DB indisponível.');
   const id=$('#pId').value.trim(); if(!id) return;
+  await window.DB.deleteProduct(id);
   data = data.filter(p=>p.id!==id);
-  render(); clearForm(); saveLocal();
-  if(window.DB?.enabled){ try{ await window.DB.deleteProduct(id); }catch(e){ console.warn(e); } }
+  render(); clearForm();
 }
+
 function clearForm(){ $('#pId').value=''; $('#pName').value=''; $('#pPrice').value=''; $('#pCat').value=''; $('#pImg').value=''; }
 
 function exportJSON(){
@@ -67,19 +80,24 @@ function importJSON(file){
     try{
       const arr=JSON.parse(e.target.result);
       if(!Array.isArray(arr)) throw new Error('JSON deve ser um array de produtos.');
-      data=arr; render(); saveLocal(); alert('Importado!');
-      if(window.DB?.enabled){ await Promise.all(arr.map(p=>window.DB.setProduct(p))); }
+      await Promise.all(arr.map(p=> window.DB.setProduct(p)));
+      data = await window.DB.getProducts();
+      render();
+      alert('Importado para o DB!');
     }catch(err){ alert('Erro: '+err.message); }
   };
   r.readAsText(file);
 }
 
 document.addEventListener('DOMContentLoaded',async ()=>{
+  await health();
   await load(); render();
   $('#addBtn').onclick=upsert;
   $('#delBtn').onclick=del;
-  $('#saveBtn').onclick=()=>{ saveLocal(); alert('Salvo localmente/DB se habilitado.'); };
   $('#exportBtn').onclick=exportJSON;
   $('#importBtn').onclick=()=>$('#fileInput').click();
   $('#fileInput').addEventListener('change',e=>{ const f=e.target.files?.[0]; if(f) importJSON(f); e.target.value=''; });
+
+  window.addEventListener('online', health);
+  window.addEventListener('offline', health);
 });

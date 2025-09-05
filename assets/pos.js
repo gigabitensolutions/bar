@@ -1,4 +1,4 @@
-/* ========= Configurações fixas ========= */
+/* ========= Config fixa ========= */
 const PIX_CFG = {
   KEY: 'edab0cd5-ecd4-4050-87f7-fbaf98899713',
   MERCHANT: 'GIGABITEN',
@@ -7,24 +7,13 @@ const PIX_CFG = {
 };
 const PAYMENT_METHODS = ['PIX', 'Cartão de Débito', 'Cartão de Crédito'];
 
-/* ========= Utilidades ========= */
+/* ========= Utils ========= */
 const BRL = new Intl.NumberFormat('pt-BR', {style:'currency', currency:'BRL'});
 const $ = s => document.querySelector(s);
 const $$ = s => Array.from(document.querySelectorAll(s));
 const uid = () => Math.random().toString(36).slice(2,10);
 const sum = arr => arr.reduce((a,b)=>a+b,0);
 const pad4 = n => String(n).padStart(4,'0');
-
-/* ========= LocalStorage Keys ========= */
-const LS_KEYS = {
-  COMANDAS: 'comandas_v3',
-  ACTIVE: 'activeComandaId_v3',
-  PRODUCTS: 'products_cache_v1',
-  SERVICE: 'service10_v1',
-  BIGTOUCH: 'ui_big_touch_v1',
-  HISTORY: 'comandas_history_v1',
-  HSEQ: 'comandas_history_seq_v1'
-};
 
 /* ========= Estado ========= */
 let state = {
@@ -34,45 +23,36 @@ let state = {
   query: '',
   comandas: {},
   activeComandaId: null,
-  service10: JSON.parse(localStorage.getItem(LS_KEYS.SERVICE) || 'false'),
-  bigTouch: localStorage.getItem(LS_KEYS.BIGTOUCH) === '1',
-  history: [],
-  hseq: parseInt(localStorage.getItem(LS_KEYS.HSEQ) || '1', 10)
+  service10: false,
+  bigTouch: false,
+  history: []
 };
-let lastHistoryView = []; // último conjunto filtrado (para export)
+let lastHistoryView = [];
 
-/* ========= Persistência ========= */
-function loadPersisted(){
-  try{
-    const c = JSON.parse(localStorage.getItem(LS_KEYS.COMANDAS) || '{}');
-    const a = localStorage.getItem(LS_KEYS.ACTIVE);
-    const h = JSON.parse(localStorage.getItem(LS_KEYS.HISTORY) || '[]');
-    state.comandas = c;
-    state.activeComandaId = (a && c[a]) ? a : null;
-    state.history = Array.isArray(h) ? h : [];
-  }catch(e){}
+/* ========= Health UI ========= */
+function setDBBadge(info){
+  const el = $('#dbStatus');
+  if(!el){ return; }
+  if(!window.DB?.enabled){
+    el.textContent = 'DB: OFF';
+    el.style.borderColor = '#ef4444'; el.style.color = '#ef4444';
+    return;
+  }
+  const ok = !!info?.rulesOk;
+  el.textContent = ok ? 'DB: OK' : 'DB: ERRO';
+  el.style.borderColor = ok ? '#22c55e' : '#ef4444';
+  el.style.color = ok ? '#22c55e' : '#ef4444';
 }
-function persist(){
-  localStorage.setItem(LS_KEYS.COMANDAS, JSON.stringify(state.comandas));
-  localStorage.setItem(LS_KEYS.ACTIVE, state.activeComandaId || '');
-  localStorage.setItem(LS_KEYS.SERVICE, JSON.stringify(state.service10));
-  localStorage.setItem(LS_KEYS.BIGTOUCH, state.bigTouch ? '1' : '0');
-  localStorage.setItem(LS_KEYS.HISTORY, JSON.stringify(state.history));
-  localStorage.setItem(LS_KEYS.HSEQ, String(state.hseq));
+async function runHealth(){
+  if(!window.DB?.enabled){ setDBBadge(); return; }
+  const r = await window.DB.healthCheck();
+  setDBBadge(r);
 }
 
 /* ========= Produtos ========= */
 async function loadProducts(){
-  try{
-    const cached = JSON.parse(localStorage.getItem(LS_KEYS.PRODUCTS) || '[]');
-    if(Array.isArray(cached) && cached.length){
-      state.products = cached;
-      state.categories = ['Todos', ...Array.from(new Set(cached.map(p=>p.category)))];
-      return;
-    }
-  }catch(e){}
-  state.products = DEFAULT_PRODUCTS;
-  state.categories = ['Todos', ...Array.from(new Set(DEFAULT_PRODUCTS.map(p=>p.category)))];
+  state.products = DEFAULT_PRODUCTS; // base se DB vier vazio
+  state.categories = ['Todos', ...Array.from(new Set(state.products.map(p=>p.category)))];
 }
 
 /* ========= Comandas ========= */
@@ -85,40 +65,36 @@ function createComanda({name,label,color}){
     items:{}
   };
   state.activeComandaId = id;
-  persist(); refreshComandaSelect(); updateSummaryBar();
-  // DB
+  refreshComandaSelect(); updateSummaryBar();
   if(window.DB?.enabled){ window.DB.upsertTab(state.comandas[id]).catch(()=>{}); }
   return id;
 }
 function getActive(){ return state.activeComandaId ? state.comandas[state.activeComandaId] : null; }
-function setActive(id){ state.activeComandaId = id; persist(); updateSummaryBar(); }
+function setActive(id){ state.activeComandaId = id; updateSummaryBar(); }
 function deleteActive(){
   const c = getActive(); if(!c) return;
   if(confirm(`Excluir comanda "${c.name}"?`)){
     delete state.comandas[c.id];
     if(window.DB?.enabled){ window.DB.deleteTab(c.id).catch(()=>{}); }
     state.activeComandaId = Object.keys(state.comandas)[0] || null;
-    persist(); refreshComandaSelect(); updateSummaryBar();
+    refreshComandaSelect(); updateSummaryBar();
   }
 }
 function clearItems(){
   const c = getActive(); if(!c) return;
-  c.items = {}; persist();
+  c.items = {};
   if(window.DB?.enabled){ window.DB.upsertTab(getActive()).catch(()=>{}); }
   updateSummaryBar(); if($('#drawer').classList.contains('open')) renderDrawer();
 }
 
 /* ========= Histórico ========= */
-function archiveComandaSnapshot(c){
+function buildSnapshot(c, number){
   const items = Object.values(c.items||{});
-  if(items.length===0) return null;
-
   const subtotal = sum(items.map(i=>i.unit*i.qty));
   const service = state.service10 ? subtotal*0.10 : 0;
   const total = subtotal + service;
-
-  const snap = {
-    number: state.hseq++,
+  return {
+    number,
     comandaId: c.id,
     name: c.name,
     label: c.label || '',
@@ -132,11 +108,7 @@ function archiveComandaSnapshot(c){
     items: items.map(i=>({ id:i.id, name:i.name, unit:i.unit, qty:i.qty, total:i.unit*i.qty })),
     subtotal, service, total
   };
-  state.history.unshift(snap);
-  persist();
-  return snap;
 }
-
 function startOfDay(ts){ const d = new Date(ts); d.setHours(0,0,0,0); return +d; }
 function endOfDay(ts){ const d = new Date(ts); d.setHours(23,59,59,999); return +d; }
 
@@ -157,7 +129,7 @@ function getHistoryFilterRange(){
     const t = $('#histTo').value ? endOfDay(new Date($('#histTo').value)) : Number.MAX_SAFE_INTEGER;
     return {from: f, to: t};
   }
-  return {from: 0, to: Number.MAX_SAFE_INTEGER}; // all
+  return {from: 0, to: Number.MAX_SAFE_INTEGER};
 }
 function getHistoryExtraFilters(){
   const pay = $('#histPay')?.value || 'all';
@@ -175,7 +147,6 @@ function filterHistory(){
     return inRange && byPay && byLabel;
   });
 }
-
 function calcPeriodTotals(list){
   const valid = list.filter(r=>!r.reversed);
   const subtotal = sum(valid.map(r=>r.subtotal));
@@ -287,7 +258,6 @@ function toggleReverseRecord(number){
   const rec = state.history[i];
   rec.reversed = !rec.reversed;
   rec.reversedAt = rec.reversed ? Date.now() : null;
-  persist();
   if(window.DB?.enabled){ window.DB.saveHistory(rec).catch(()=>{}); }
   renderHistory();
 }
@@ -306,7 +276,6 @@ function reopenFromRecord(rec){
   });
   state.service10 = !!rec.service10;
   c.service10 = state.service10;
-  persist();
   if(window.DB?.enabled){ window.DB.upsertTab(c).catch(()=>{}); }
   updateSummaryBar();
   $('#historyModal').classList.remove('open');
@@ -316,22 +285,29 @@ function reopenFromRecord(rec){
 }
 
 /* ========= Fechar comanda ========= */
-function closeComanda(){
+async function closeComanda(){
   const c = getActive(); if(!c) return;
   const hasItems = Object.keys(c.items||{}).length>0;
   if(!hasItems){
     if(confirm(`A comanda "${c.name}" está vazia. Deseja apenas zerar sem registrar no histórico?`)){
-      c.items = {}; persist(); renderDrawer(); updateSummaryBar();
-      if(window.DB?.enabled){ window.DB.upsertTab(c).catch(()=>{}); }
+      c.items = {}; if(window.DB?.enabled){ window.DB.upsertTab(c).catch(()=>{}); }
+      renderDrawer(); updateSummaryBar();
     }
     return;
   }
   if(confirm(`Fechar comanda "${c.name}" e registrar no histórico como PAGA?`)){
-    const snap = archiveComandaSnapshot(c);
+    let seq = 1;
+    if(window.DB?.enabled){
+      try{ seq = await window.DB.nextHistorySeq(); }catch(e){ console.warn('seq:', e); }
+    }
+    const snap = buildSnapshot(c, seq);
+    state.history.unshift(snap);
+    // Atualiza comanda
     c.items = {};
     c.status = 'closed';
     c.closedAt = snap.closedAt;
-    persist(); renderDrawer(); updateSummaryBar();
+
+    renderDrawer(); updateSummaryBar();
 
     if(window.DB?.enabled){
       window.DB.saveHistory(snap).catch(()=>{});
@@ -368,10 +344,8 @@ function addToComanda(product, qty=1){
   const current = c.items[product.id] || { id:product.id, name:product.name, unit:product.price, qty:0 };
   current.qty += qty;
   if(current.qty<=0) delete c.items[product.id]; else c.items[product.id] = current;
-  persist(); updateSummaryBar();
-  // DB sync
-  const fresh = getActive();
-  if(window.DB?.enabled && fresh){ window.DB.upsertTab(fresh).catch(()=>{}); }
+  updateSummaryBar();
+  if(window.DB?.enabled){ window.DB.upsertTab(c).catch(()=>{}); }
 }
 function renderGrid(){
   const grid = $('#grid'); const list = state.products.filter(passFilters);
@@ -437,7 +411,7 @@ function renderPayMethods(){
     b.className = 'chip' + (c.payMethod===method?' active':'');
     b.textContent = method;
     b.onclick = ()=>{
-      c.payMethod = method; persist();
+      c.payMethod = method;
       if(window.DB?.enabled){ window.DB.upsertTab(c).catch(()=>{}); }
       renderPayMethods(); togglePixButton();
     };
@@ -463,8 +437,8 @@ function renderDrawer(){
           <button class="btn" data-inc>+</button>
           <strong>${BRL.format(i.unit*i.qty)}</strong>
         </div>`;
-      line.querySelector('[data-dec]').onclick=()=>{ i.qty=Math.max(0,i.qty-1); if(i.qty===0) delete c.items[i.id]; persist(); renderDrawer(); updateSummaryBar(); if(window.DB?.enabled){ window.DB.upsertTab(getActive()).catch(()=>{}); } };
-      line.querySelector('[data-inc]').onclick=()=>{ i.qty+=1; persist(); renderDrawer(); updateSummaryBar(); if(window.DB?.enabled){ window.DB.upsertTab(getActive()).catch(()=>{}); } };
+      line.querySelector('[data-dec]').onclick=()=>{ i.qty=Math.max(0,i.qty-1); if(i.qty===0) delete c.items[i.id]; renderDrawer(); updateSummaryBar(); if(window.DB?.enabled){ window.DB.upsertTab(getActive()).catch(()=>{}); } };
+      line.querySelector('[data-inc]').onclick=()=>{ i.qty+=1; renderDrawer(); updateSummaryBar(); if(window.DB?.enabled){ window.DB.upsertTab(getActive()).catch(()=>{}); } };
       cont.appendChild(line);
     });
   }
@@ -711,69 +685,10 @@ function renderOverview(){
         <button class="btn danger" data-del>Excluir</button>
       </div>`;
     div.querySelector('[data-open]').onclick=()=>{ setActive(id); $('#overviewModal').classList.remove('open'); updateSummaryBar(); };
-    div.querySelector('[data-clear]').onclick=()=>{ state.comandas[id].items={}; persist(); if(window.DB?.enabled){ window.DB.upsertTab(state.comandas[id]).catch(()=>{}); } renderOverview(); updateSummaryBar(); };
-    div.querySelector('[data-del]').onclick=()=>{ if(confirm(`Excluir ${c.name}?`)){ delete state.comandas[id]; persist(); if(window.DB?.enabled){ window.DB.deleteTab(id).catch(()=>{}); } renderOverview(); refreshComandaSelect(); updateSummaryBar(); } };
+    div.querySelector('[data-clear]').onclick=()=>{ state.comandas[id].items={}; if(window.DB?.enabled){ window.DB.upsertTab(state.comandas[id]).catch(()=>{}); } renderOverview(); updateSummaryBar(); };
+    div.querySelector('[data-del]').onclick=()=>{ if(confirm(`Excluir ${c.name}?`)){ delete state.comandas[id]; if(window.DB?.enabled){ window.DB.deleteTab(id).catch(()=>{}); } renderOverview(); refreshComandaSelect(); updateSummaryBar(); } };
     board.appendChild(div);
   });
-}
-
-/* ========= Impressão térmica 80mm ========= */
-function buildTicketHTML(c, totals, qrDataUrl = null){
-  const created = new Date().toLocaleString('pt-BR');
-  const itemsRows = Object.values(c.items||{}).map(i=>{
-    const line1 = `<tr><td class="qty">${i.qty}x</td><td class="name">${i.name}</td><td class="amt">${BRL.format(i.unit*i.qty)}</td></tr>`;
-    const line2 = `<tr><td></td><td class="name muted">(${BRL.format(i.unit)} un)</td><td></td></tr>`;
-    return line1 + line2;
-  }).join('');
-  const qrBlock = (c.payMethod==='PIX' && qrDataUrl)
-    ? `<img class="qr" src="${qrDataUrl}" alt="QR PIX"><div class="payload">${buildPixPayload(totals.total, c.id)}</div>`
-    : '';
-  return `
-    <div class="ticket">
-      <div class="title">${sanitizeASCII(PIX_CFG.MERCHANT)}</div>
-      <div class="meta">
-        COMANDA: ${sanitizeASCII(c.name)}${c.label?` [${sanitizeASCII(c.label)}]`:''}<br/>
-        DATA: ${created}<br/>
-        PAGAMENTO: ${sanitizeASCII(c.payMethod)}
-      </div>
-      <div class="sep"></div>
-      <table class="items">${itemsRows}</table>
-      <div class="sep"></div>
-      <div class="totals">
-        <div class="row"><span>Subtotal</span><strong>${BRL.format(totals.subtotal)}</strong></div>
-        <div class="row"><span>Serviço (10%)</span><strong>${BRL.format(totals.service)}</strong></div>
-        <div class="row"><span>Total</span><strong>${BRL.format(totals.total)}</strong></div>
-      </div>
-      ${qrBlock}
-      <div class="sep"></div>
-      <div class="footer">Obrigado e volte sempre!</div>
-      <div style="height:8mm"></div>
-    </div>
-  `;
-}
-async function printThermal80(){
-  const c = getActive(); if(!c) return alert('Nenhuma comanda ativa.');
-  const t = calc(c);
-  let qrDataUrl = null;
-  if(c.payMethod==='PIX'){
-    const payload = buildPixPayload(t.total, c.id);
-    qrDataUrl = payload ? await makeQRDataURL(payload, 260) : null;
-  }
-  const html = buildTicketHTML(c, t, qrDataUrl);
-  const w = window.open('', 'PRINT', 'width=420,height=720');
-  if(!w){ alert('Pop-up bloqueado. Permita pop-ups para imprimir.'); return; }
-  w.document.write(`<!doctype html><html><head>
-    <meta charset="utf-8"><title>Imprimir Cupom</title>
-    <link rel="stylesheet" href="./assets/print.css">
-    <style>body{background:#fff}</style></head><body>${html}</body></html>`);
-  w.document.close();
-  const doPrint = () => { try{ w.focus(); w.print(); }catch(e){} setTimeout(()=>{ try{ w.close(); }catch(e){} }, 200); };
-  const imgs = w.document.images;
-  if(imgs.length){
-    let loaded = 0;
-    for(const img of imgs){ img.onload = img.onerror = () => { loaded++; if(loaded===imgs.length) doPrint(); }; }
-    setTimeout(doPrint, 1500);
-  } else { doPrint(); }
 }
 
 /* ========= UI extra ========= */
@@ -820,7 +735,7 @@ function setActiveColor(){
   const c=getActive(); if(!c) return;
   const pal=['#3b82f6','#22c55e','#ef4444','#f59e0b','#8b5cf6','#06b6d4','#e11d48','#10b981','#a3e635','#f97316'];
   const current = prompt(`Informe a cor (hex) ou escolha: \n${pal.join(' ')}`, c.color);
-  if(current){ c.color=current; persist(); if(window.DB?.enabled){ window.DB.upsertTab(c).catch(()=>{}); } renderDrawer(); renderOverview(); }
+  if(current){ c.color=current; if(window.DB?.enabled){ window.DB.upsertTab(c).catch(()=>{}); } renderDrawer(); renderOverview(); }
 }
 function importProductsFromFile(f){
   const reader = new FileReader();
@@ -828,22 +743,27 @@ function importProductsFromFile(f){
     try{
       const arr = JSON.parse(e.target.result);
       if(!Array.isArray(arr)) throw new Error('JSON precisa ser um array');
-      localStorage.setItem(LS_KEYS.PRODUCTS, JSON.stringify(arr));
-      state.products = arr;
-      state.categories = ['Todos', ...Array.from(new Set(arr.map(p=>p.category)))];
       if(window.DB?.enabled){
-        Promise.all(arr.map(p=> window.DB.setProduct(p))).catch(()=>{});
+        Promise.all(arr.map(p=> window.DB.setProduct(p))).then(async ()=>{
+          state.products = await window.DB.getProducts();
+          state.categories = ['Todos', ...Array.from(new Set(state.products.map(p=>p.category)))];
+          refreshChips(); renderGrid();
+          alert('Produtos importados para o DB!');
+        });
+      }else{
+        alert('DB indisponível. Configure o Firebase.');
       }
-      refreshChips(); renderGrid();
-      alert('Produtos importados!');
     }catch(err){ alert('Erro ao importar: '+err.message); }
   };
   reader.readAsText(f);
 }
 
-/* ========= Boot ========= */
+/* ========= Bind/Boot ========= */
 function bindEvents(){
-  $('#bigTouchBtn').onclick = ()=>{ state.bigTouch = !state.bigTouch; persist(); applyBigTouch(); };
+  $('#bigTouchBtn').onclick = async ()=>{
+    state.bigTouch = !state.bigTouch; applyBigTouch();
+    if(window.DB?.enabled){ await window.DB.setSettings({ bigTouch: state.bigTouch }); }
+  };
 
   $('#historyBtn').onclick = ()=>{
     $('#histRange').value = 'all';
@@ -884,7 +804,11 @@ function bindEvents(){
   $('#closeDrawer').onclick = ()=>$('#drawer').classList.remove('open');
   $('#colorBtn').onclick = setActiveColor;
 
-  $('#sv10').onchange = e=>{ state.service10 = e.target.checked; persist(); renderDrawer(); updateSummaryBar(); };
+  $('#sv10').onchange = async e=>{
+    state.service10 = e.target.checked;
+    if(window.DB?.enabled){ await window.DB.setSettings({ service10: state.service10 }); }
+    renderDrawer(); updateSummaryBar();
+  };
 
   $('#shareBtn').onclick = shareComanda;
   $('#pdfBtn').onclick = generatePDF;
@@ -909,19 +833,27 @@ function bindEvents(){
   });
 
   $$('.modal').forEach(m=>{ m.addEventListener('click', (ev)=>{ if(ev.target===m) m.classList.remove('open'); }); });
+
+  window.addEventListener('online', runHealth);
+  window.addEventListener('offline', runHealth);
 }
+
 async function boot(){
-  loadPersisted();
+  await runHealth();
   await loadProducts();
 
-  // ====== Carrega do DB (se configurado) ======
   if(window.DB?.enabled){
+    try{
+      const settings = await window.DB.getSettings();
+      state.service10 = !!settings.service10;
+      state.bigTouch = !!settings.bigTouch;
+    }catch(e){ console.warn('settings:', e); }
+
     try{
       const remoteProducts = await window.DB.getProducts();
       if(Array.isArray(remoteProducts) && remoteProducts.length){
         state.products = remoteProducts;
         state.categories = ['Todos', ...Array.from(new Set(remoteProducts.map(p=>p.category)))];
-        localStorage.setItem(LS_KEYS.PRODUCTS, JSON.stringify(remoteProducts));
       }
     }catch(e){ console.warn('Produtos DB:', e); }
 
@@ -929,21 +861,19 @@ async function boot(){
       const tabs = await window.DB.getOpenTabs();
       tabs.forEach(t=>{ state.comandas[t.id] = t; });
       if(tabs.length && !state.activeComandaId){ state.activeComandaId = tabs[0].id; }
-      persist();
     }catch(e){ console.warn('Comandas DB:', e); }
 
     try{
       const hist = await window.DB.getHistory();
       if(Array.isArray(hist) && hist.length){
         state.history = hist.sort((a,b)=>b.closedAt - a.closedAt);
-        state.hseq = Math.max(state.hseq, (hist[0]?.number||0)+1);
-        persist();
       }
     }catch(e){ console.warn('Histórico DB:', e); }
   }
 
   applyBigTouch();
   refreshChips(); refreshComandaSelect(); bindEvents(); renderGrid(); updateSummaryBar();
+
   if(!getActive()){ createComanda({name:'Mesa 1',color:'#22c55e'}); refreshComandaSelect(); }
 }
 document.addEventListener('DOMContentLoaded', boot);
