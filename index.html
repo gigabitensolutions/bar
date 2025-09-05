@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+  <meta name="theme-color" content="#0b1220"/>
   <title>Comandas — POS</title>
   <link rel="stylesheet" href="./assets/app.css"/>
   <link rel="stylesheet" href="./assets/print.css" media="print"/>
@@ -90,10 +91,12 @@
           <label>Até <input id="fTo" type="date" class="input"></label>
           <button id="histExport" class="btn">Exportar PDF</button>
         </div>
-        <table class="table">
-          <thead><tr><th>#</th><th>Comanda</th><th>Etiqueta</th><th>Fechamento</th><th>Pagamento</th><th>Total</th></tr></thead>
-          <tbody id="histBody"></tbody>
-        </table>
+        <div class="table">
+          <table style="width:100%;border-collapse:collapse">
+            <thead><tr><th>#</th><th>Comanda</th><th>Etiqueta</th><th>Fechamento</th><th>Pagamento</th><th>Total</th></tr></thead>
+            <tbody id="histBody"></tbody>
+          </table>
+        </div>
         <div class="row" style="justify-content:flex-end;margin-top:8px">
           <strong>Total do período: <span id="histTotal">R$ 0,00</span></strong>
         </div>
