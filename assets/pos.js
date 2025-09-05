@@ -310,31 +310,34 @@ async function closeComanda(){
   const c = getActive(); if(!c) return;
   const hasItems = Object.keys(c.items||{}).length>0;
   if(!hasItems){
-    if(confirm(`A comanda "${c.name}" está vazia. Deseja apenas zerar sem registrar no histórico?`)){
-      c.items = {}; if(window.DB?.enabled){ window.DB.upsertTab(c).catch(()=>{}); }
+    if(confirm(`A comanda "${c.name}" está vazia. Zerar sem registrar no histórico?`)){
+      c.items = {};
+      if(window.DB?.enabled){ window.DB.upsertTab(c).catch(()=>{}); }
       renderDrawer(); updateSummaryBar();
     }
     return;
   }
+  if(!window.DB?.enabled) return alert('DB indisponível. Verifique BACKEND_URL.');
+
   if(confirm(`Fechar comanda "${c.name}" e registrar no histórico como PAGA?`)){
-    let seq = 1;
-    if(window.DB?.enabled){
-      try{ seq = await window.DB.nextHistorySeq(); }catch(e){ console.warn('seq:', e); }
-    }
-    const snap = buildSnapshot(c, seq);
-    state.history.unshift(snap);
-    // Atualiza comanda
-    c.items = {};
-    c.status = 'closed';
-    c.closedAt = snap.closedAt;
+    try{
+      const rec = await window.DB.closeComanda({
+        id: c.id, name: c.name, label: c.label || '', color: c.color || '#3b82f6',
+        createdAt: c.createdAt || Date.now(),
+        payMethod: c.payMethod || 'PIX',
+        service10: !!state.service10,
+        items: c.items
+      });
+      // Atualiza estado local
+      state.history.unshift(rec);
+      c.items = {}; c.status = 'closed'; c.closedAt = rec.closedAt;
 
-    renderDrawer(); updateSummaryBar();
-
-    if(window.DB?.enabled){
-      window.DB.saveHistory(snap).catch(()=>{});
-      window.DB.upsertTab(c).catch(()=>{});
+      renderDrawer(); updateSummaryBar();
+      alert(`Comanda fechada! Registro #${String(rec.number).padStart(4,'0')}.`);
+    }catch(e){
+      console.error(e);
+      alert('Erro ao fechar comanda. Veja logs da API.');
     }
-    alert(`Comanda fechada! Registro #${pad4(snap.number)} criado no histórico.`);
   }
 }
 
