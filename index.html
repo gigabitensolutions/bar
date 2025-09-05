@@ -19,10 +19,9 @@
         <div class="right row">
           <button id="bigTouchBtn" class="btn ghost" aria-pressed="false">Toque grande</button>
           <button id="overviewBtn" class="btn">Visão geral</button>
+          <button id="historyBtn" class="btn">Histórico</button>
           <select id="comandaSelect" class="select" style="min-width:160px"></select>
           <button id="deleteComandaBtn" class="btn danger">Excluir</button>
-          <button id="importProductsBtn" class="btn">Importar produtos</button>
-          <input id="importFile" class="hidden" type="file" accept="application/json">
         </div>
       </div>
 
@@ -37,7 +36,7 @@
       <div class="toolbar">
         <input id="search" class="input" placeholder="Buscar produto por nome/categoria..."/>
         <button id="clearSearch" class="btn ghost">Limpar</button>
-        <!-- <button id="openDrawer" class="btn warn">Abrir comanda</button> -->
+        <button id="openDrawer" class="btn warn">Abrir comanda</button>
       </div>
       <div id="chips" class="chips"></div>
     </div>
@@ -51,7 +50,7 @@
     <div class="bar-inner">
       <span id="summaryCount" class="muted">0 itens</span>
       <strong id="summaryTotal" class="price">R$ 0,00</strong>
-      <button id="openDrawer" class="btn warn">Abrir comanda</button>
+      <button id="openDrawer" class="btn accent">Abrir comanda</button>
     </div>
   </div>
 
@@ -89,7 +88,29 @@
         <button id="pdfBtn" class="btn">PDF</button>
         <button id="print80Btn" class="btn">Imprimir 80mm</button>
         <button id="clearItemsBtn" class="btn warn">Limpar itens</button>
-        <button id="closeComandaBtn" class="btn danger">Encerrar Comanda</button>
+        <button id="closeComandaBtn" class="btn danger">Fechar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Visão geral -->
+  <div id="overviewModal" class="modal" aria-hidden="true">
+    <div class="panel" role="dialog" aria-modal="true">
+      <h3>Comandas Abertas</h3>
+      <div id="board" class="form-row"></div>
+      <div class="row" style="margin-top:12px">
+        <button id="closeOverviewBtn" class="btn">Fechar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Histórico -->
+  <div id="historyModal" class="modal" aria-hidden="true">
+    <div class="panel" role="dialog" aria-modal="true">
+      <h3>Histórico</h3>
+      <div id="histList" class="hist-list"></div>
+      <div class="row" style="margin-top:12px">
+        <button id="closeHistoryBtn" class="btn">Fechar</button>
       </div>
     </div>
   </div>
@@ -103,17 +124,6 @@
       <div class="row" style="margin-top:10px">
         <button id="copyPixBtn" class="btn">Copiar código</button>
         <button id="closePixBtn" class="btn">Fechar</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Modal: Visão geral -->
-  <div id="overviewModal" class="modal" aria-hidden="true">
-    <div class="panel" role="dialog" aria-modal="true">
-      <h3>Comandas Abertas</h3>
-      <div id="board" class="form-row"></div>
-      <div class="row" style="margin-top:12px">
-        <button id="closeOverviewBtn" class="btn">Fechar</button>
       </div>
     </div>
   </div>

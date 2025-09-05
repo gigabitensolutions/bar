@@ -1,10 +1,9 @@
+/* ========= Configuração opcional de backend ========= */
+const BACKEND_URL = window.BACKEND_URL || null;
+const TENANT_ID   = window.TENANT_ID   || 'default';
+
 /* ========= Configurações fixas ========= */
-const PIX_CFG = {
-  KEY: 'edab0cd5-ecd4-4050-87f7-fbaf98899713',
-  MERCHANT: 'GIGABITEN',
-  CITY: 'BRASIL',
-  DESC: 'COMANDA'
-};
+const PIX_CFG = { KEY:'edab0cd5-ecd4-4050-87f7-fbaf98899713', MERCHANT:'GIGABITEN', CITY:'BRASIL', DESC:'COMANDA' };
 const PAYMENT_METHODS = ['PIX', 'Cartão de Débito', 'Cartão de Crédito'];
 
 /* ========= Utilidades ========= */
@@ -26,11 +25,13 @@ const DEFAULT_PRODUCTS = [
 
 /* ========= LocalStorage Keys ========= */
 const LS_KEYS = {
-  COMANDAS: 'comandas_v3',
-  ACTIVE: 'activeComandaId_v3',
-  PRODUCTS: 'products_cache_v1',
-  SERVICE: 'service10_v1',
-  BIGTOUCH: 'ui_big_touch_v1'
+  COMANDAS: 'comandas_v5',
+  ACTIVE:   'activeComandaId_v5',
+  PRODUCTS: 'products_cache_v2',
+  SERVICE:  'service10_v2',
+  BIGTOUCH: 'ui_big_touch_v2',
+  HISTORY:  'history_v3',
+  HSEQ:     'history_seq_v3'
 };
 
 /* ========= Estado ========= */
@@ -43,16 +44,17 @@ let state = {
   activeComandaId: null,
   service10: JSON.parse(localStorage.getItem(LS_KEYS.SERVICE) || 'false'),
   bigTouch: localStorage.getItem(LS_KEYS.BIGTOUCH) === '1',
-  inlineNew: { name:'Mesa 1', label:'', color:'#3b82f6' }
+  inlineNew: { name:'Mesa 1', label:'', color:'#3b82f6' },
+  history: []
 };
 
 /* ========= Persistência ========= */
 function loadPersisted(){
   try{
-    const c = JSON.parse(localStorage.getItem(LS_KEYS.COMANDAS) || '{}');
+    state.comandas = JSON.parse(localStorage.getItem(LS_KEYS.COMANDAS) || '{}');
     const a = localStorage.getItem(LS_KEYS.ACTIVE);
-    state.comandas = c;
-    state.activeComandaId = (a && c[a]) ? a : null;
+    state.activeComandaId = (a && state.comandas[a]) ? a : null;
+    state.history = JSON.parse(localStorage.getItem(LS_KEYS.HISTORY) || '[]');
   }catch(e){}
 }
 function persist(){
@@ -60,6 +62,12 @@ function persist(){
   localStorage.setItem(LS_KEYS.ACTIVE, state.activeComandaId || '');
   localStorage.setItem(LS_KEYS.SERVICE, JSON.stringify(state.service10));
   localStorage.setItem(LS_KEYS.BIGTOUCH, state.bigTouch ? '1' : '0');
+  localStorage.setItem(LS_KEYS.HISTORY, JSON.stringify(state.history));
+}
+function nextHistorySeq(){
+  const n = parseInt(localStorage.getItem(LS_KEYS.HSEQ) || '0', 10) + 1;
+  localStorage.setItem(LS_KEYS.HSEQ, String(n));
+  return n;
 }
 
 /* ========= Produtos ========= */
@@ -79,10 +87,7 @@ async function loadProducts(){
 /* ========= Comandas ========= */
 function createComanda({name,label,color}){
   const id = uid();
-  state.comandas[id] = {
-    id, name, label: label || '', color: color || '#3b82f6',
-    createdAt: Date.now(), payMethod: 'PIX', items:{}
-  };
+  state.comandas[id] = { id, name, label: label || '', color: color || '#3b82f6', createdAt: Date.now(), payMethod: 'PIX', items:{} };
   state.activeComandaId = id;
   persist(); refreshComandaSelect(); updateSummaryBar();
   return id;
@@ -101,11 +106,52 @@ function clearItems(){
   const c = getActive(); if(!c) return;
   c.items = {}; persist(); updateSummaryBar(); if($('#drawer').classList.contains('open')) renderDrawer();
 }
-function closeComanda(){
+function calc(c){
+  const items = Object.values(c.items||{});
+  const subtotal = sum(items.map(i=>i.unit*i.qty));
+  const service = state.service10 ? subtotal*0.10 : 0;
+  const total = subtotal + service;
+  const count = sum(items.map(i=>i.qty));
+  return {items, subtotal, service, total, count};
+}
+async function closeComanda(){
   const c = getActive(); if(!c) return;
-  if(confirm(`Fechar comanda "${c.name}"? Isto zera os itens.`)){
-    c.items = {}; persist(); updateSummaryBar(); if($('#drawer').classList.contains('open')) renderDrawer();
+  if(!confirm(`Fechar comanda "${c.name}"?`)) return;
+
+  const t = calc(c);
+  const record = {
+    number: nextHistorySeq(),
+    comandaId: c.id, name: c.name, label: c.label || '',
+    color: c.color || '#3b82f6',
+    createdAt: c.createdAt || Date.now(),
+    closedAt: Date.now(),
+    payMethod: c.payMethod || 'PIX',
+    service10: !!state.service10, reversed:false, reversedAt:null,
+    items: Object.values(c.items||{}).map(i=>({ id:i.id, name:i.name, unit:Number(i.unit||0), qty:Number(i.qty||0), total:Number(i.unit||0)*Number(i.qty||0) })),
+    subtotal: t.subtotal, service: t.service, total: t.total
+  };
+
+  if(BACKEND_URL){
+    try{
+      const resp = await fetch(`${BACKEND_URL}/close-comanda?tenant=${encodeURIComponent(TENANT_ID)}`, {
+        method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ ...c, service10: state.service10 })
+      });
+      if(resp.ok){
+        const data = await resp.json();
+        if(data && data.record){
+          record.number = data.record.number;
+          record.closedAt = data.record.closedAt || record.closedAt;
+        }
+      }
+    }catch(e){ /* segue local */ }
   }
+
+  state.history = [record, ...state.history].slice(0, 2000);
+  c.items = {};
+  persist();
+  updateSummaryBar();
+  if($('#drawer').classList.contains('open')) renderDrawer();
+  alert('Comanda fechada e registrada no histórico.');
 }
 
 /* ========= UI: Filtros/Cards ========= */
@@ -156,7 +202,7 @@ function renderGrid(){
         <div class="price">${BRL.format(p.price)}</div>
       </div>
 
-      <div class="flex" style="margin-top:12px">
+      <div class="card-controls">
         <div class="stepper">
           <button data-act="dec" aria-label="Diminuir">−</button>
           <input aria-label="Quantidade" type="text" inputmode="numeric" value="${getQty(p.id)}">
@@ -176,14 +222,6 @@ function renderGrid(){
 }
 
 /* ========= Bottom bar ========= */
-function calc(c){
-  const items = Object.values(c.items||{});
-  const subtotal = sum(items.map(i=>i.unit*i.qty));
-  const service = state.service10 ? subtotal*0.10 : 0;
-  const total = subtotal + service;
-  const count = sum(items.map(i=>i.qty));
-  return {items, subtotal, service, total, count};
-}
 function updateSummaryBar(){
   const c = getActive();
   if(!c){ $('#summaryCount').textContent='0 itens'; $('#summaryTotal').textContent=BRL.format(0); return; }
@@ -268,6 +306,8 @@ function shareComanda(){
   if(navigator.share){ navigator.share({title:'Comanda', text}).catch(()=>{}); }
   else { navigator.clipboard.writeText(text).then(()=>alert('Resumo copiado!')).catch(()=>alert(text)); }
 }
+
+/* ========= PDF ========= */
 async function generatePDF(){
   const c=getActive(); if(!c) return alert('Nenhuma comanda ativa.');
   const { jsPDF } = window.jspdf || {}; if(!jsPDF){ alert('jsPDF não carregado'); return; }
@@ -316,7 +356,7 @@ function crc16(payload){
   return crc.toString(16).toUpperCase().padStart(4,'0');
 }
 function buildPixPayload(amount, txid='COMANDA'){
-  const GUI = emvField('00','br.gov.bcb.pix'); // lowercase recomendado
+  const GUI = emvField('00','br.gov.bcb.pix');
   const KEY = emvField('01', PIX_CFG.KEY);
   const DESC = PIX_CFG.DESC ? emvField('02', PIX_CFG.DESC.substring(0,25)) : '';
   const MAI = emvField('26', GUI + KEY + DESC);
@@ -380,6 +420,36 @@ function renderOverview(){
     div.querySelector('[data-del]').onclick=()=>{ if(confirm(`Excluir ${c.name}?`)){ delete state.comandas[id]; persist(); renderOverview(); refreshComandaSelect(); updateSummaryBar(); } };
     board.appendChild(div);
   });
+}
+
+/* ========= Histórico ========= */
+function renderHistory(){
+  const cont = $('#histList'); if(!cont) return;
+  const openIds = Object.keys(state.comandas);
+  const openCards = openIds.map(id=>{
+    const c = state.comandas[id]; const t = calc(c);
+    return `
+      <div class="hist-item">
+        <div class="hist-head">
+          <div><span class="dot" style="background:${c.color}"></span> <strong>${c.name}</strong> <span class="tag">${c.label||'—'}</span></div>
+          <div class="hist-money">${BRL.format(t.total)}</div>
+        </div>
+        <div class="hist-meta">ABERTA • ${new Date(c.createdAt||Date.now()).toLocaleString('pt-BR')} • ${t.count} itens • ${c.payMethod}</div>
+      </div>`;
+  }).join('') || `<div class="muted">Nenhuma comanda aberta.</div>`;
+
+  const closedCards = (state.history||[]).map(r=>{
+    return `
+      <div class="hist-item">
+        <div class="hist-head">
+          <div><span class="dot" style="background:${r.color||'#3b82f6'}"></span> <strong>${r.name}</strong> <span class="tag">${r.label||'—'}</span></div>
+          <div class="hist-money">${BRL.format(r.total||0)}</div>
+        </div>
+        <div class="hist-meta">#${String(r.number).padStart(6,'0')} • FECHADA • ${new Date(r.closedAt).toLocaleString('pt-BR')} • ${r.items?.reduce((a,b)=>a+(b.qty||0),0)||0} itens • ${r.payMethod}</div>
+      </div>`;
+  }).join('') || `<div class="muted">Sem registros de histórico ainda.</div>`;
+
+  cont.innerHTML = `<h4>Abertas agora</h4>${openCards}<h4 style="margin-top:8px">Fechadas (Histórico)</h4>${closedCards}`;
 }
 
 /* ========= Impressão térmica 80mm ========= */
@@ -514,11 +584,8 @@ function bindEvents(){
   $('#overviewBtn').onclick = ()=>{ renderOverview(); $('#overviewModal').classList.add('open'); };
   $('#closeOverviewBtn').onclick = ()=>$('#overviewModal').classList.remove('open');
 
-  $('#importProductsBtn').onclick = ()=> $('#importFile').click();
-  $('#importFile').addEventListener('change', e=>{
-    const f=e.target.files?.[0]; if(f) importProductsFromFile(f);
-    e.target.value='';
-  });
+  $('#historyBtn').onclick = ()=>{ renderHistory(); $('#historyModal').classList.add('open'); };
+  $('#closeHistoryBtn').onclick = ()=>$('#historyModal').classList.remove('open');
 
   $$('.modal').forEach(m=>{ m.addEventListener('click', (ev)=>{ if(ev.target===m) m.classList.remove('open'); }); });
 
