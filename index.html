@@ -3,206 +3,38 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Comandas — POS Simples</title>
-  <meta name="description" content="POS de comandas com PIX, cartões, PDF, impressão 80mm, histórico e visão geral.">
+  <title>Comandas — Frontend</title>
   <link rel="stylesheet" href="./assets/app.css"/>
   <link rel="stylesheet" href="./assets/print.css" media="print"/>
-
-  <!-- Libs -->
-  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-
-  <!-- Firebase (compat) + config + wrapper DB -->
-  <script defer src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-  <script defer src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
-  <script defer src="./assets/firebase-config.js"></script> <!-- RENOMEIE o sample -->
-  <script defer src="./assets/db.firebase.js"></script>
-
-  <!-- App -->
-  <script defer src="./assets/pos.js"></script>
 </head>
 <body>
   <header>
     <div class="wrap">
       <div class="row">
-        <h1>🧾 Comandas</h1>
-        <div class="right row" style="gap:8px">
+        <h1>🧾 Comandas — Catálogo</h1>
+        <div class="right row">
           <span id="dbStatus" class="tag">DB: —</span>
-          <button class="btn" id="bigTouchBtn" title="Aumentar áreas de toque">Toque grande</button>
-          <button class="btn" id="historyBtn" title="Ver histórico">Histórico</button>
-          <select id="comandaSelect" class="select"></select>
-          <button class="btn" id="overviewBtn" title="Visão geral">Visão geral</button>
-          <button class="btn" id="newComandaBtn" title="Nova comanda">Nova</button>
-          <button class="btn danger" id="deleteComandaBtn" title="Excluir comanda atual">Excluir</button>
-          <a class="btn ghost" href="./admin.html">Admin</a>
+          <a class="btn" href="./admin.html">Admin</a>
+          <button id="refreshBtn" class="btn">Atualizar</button>
         </div>
       </div>
       <div class="toolbar">
-        <input id="search" class="input" placeholder="Buscar produto…"/>
-        <button id="clearSearch" class="btn ghost">Limpar</button>
-        <button id="importProductsBtn" class="btn">Importar JSON</button>
-        <input id="importFile" type="file" accept="application/json" class="hidden" />
+        <div class="muted">Este índice lista os produtos do banco (Functions). Integre com seu <code>pos.js</code> completo quando quiser.</div>
       </div>
-      <div id="chips" class="chips"></div>
     </div>
   </header>
 
-  <main>
+  <main class="wrap">
+    <h2>Produtos</h2>
     <section id="grid" class="grid"></section>
   </main>
 
-  <!-- Bottom bar -->
-  <div class="bar">
-    <div class="bar-inner">
-      <span id="summaryCount" class="muted">0 itens</span>
-      <strong id="summaryTotal" class="price">R$ 0,00</strong>
-      <button id="openDrawer" class="btn accent">Abrir comanda</button>
-    </div>
-  </div>
+  <footer class="footer">
+    Feito para GitHub Pages + Firebase Functions.
+  </footer>
 
-  <!-- Drawer -->
-  <div id="drawer" class="drawer" role="dialog" aria-modal="true" aria-labelledby="drawerTitle">
-    <div class="sheet">
-      <div class="flex">
-        <div>
-          <h2 id="drawerTitle">Comanda</h2>
-          <div class="mini" id="comandaNameMini">—</div>
-          <div class="mini">Etiqueta: <span id="comandaLabelMini">—</span></div>
-        </div>
-        <div class="row">
-          <button class="btn ghost" id="colorBtn">Cor</button>
-          <button class="btn ghost" id="closeDrawer">Fechar</button>
-        </div>
-      </div>
-
-      <div id="lines"></div>
-
-      <div class="hr"></div>
-      <label class="switch">
-        <input type="checkbox" id="sv10">
-        <span>Adicionar 10% (serviço)</span>
-      </label>
-
-      <div class="hr"></div>
-      <div>
-        <div class="mini">Forma de pagamento</div>
-        <div id="payMethods" class="chips"></div>
-      </div>
-
-      <div class="totals">
-        <div class="line"><span>Subtotal</span><strong id="subtotalTxt">R$ 0,00</strong></div>
-        <div class="line"><span>Serviço (10%)</span><strong id="serviceTxt">R$ 0,00</strong></div>
-        <div class="line"><span>Total</span><strong id="totalTxt">R$ 0,00</strong></div>
-      </div>
-
-      <div class="actions">
-        <button class="btn" id="pixBtn" title="Gerar QR PIX do total">PIX do total</button>
-        <button class="btn" id="print80Btn" title="Imprimir cupom térmico 80mm">Imprimir 80mm</button>
-        <button class="btn warn" id="pdfBtn">Gerar PDF</button>
-        <button class="btn" id="shareBtn">Compartilhar</button>
-        <button class="btn" id="clearItemsBtn">Limpar itens</button>
-        <button class="btn danger" id="closeComandaBtn">Fechar comanda</button>
-      </div>
-
-      <!-- PIX Modal -->
-      <div id="pixModal" class="modal" aria-hidden="true">
-        <div class="panel">
-          <h3>PIX do total</h3>
-          <div class="mini">Use o QR abaixo para pagar o total desta comanda.</div>
-          <div id="pixQR" class="centered"></div>
-          <div class="form-row">
-            <textarea id="pixPayload" class="input" rows="3" readonly></textarea>
-          </div>
-          <div class="row">
-            <button class="btn" id="copyPixBtn">Copiar código PIX</button>
-            <button class="btn ghost right" id="closePixBtn">Fechar</button>
-          </div>
-        </div>
-      </div>
-
-    </div>
-  </div>
-
-  <!-- Nova Comanda Modal -->
-  <div id="newModal" class="modal" aria-hidden="true">
-    <div class="panel">
-      <h3>Nova comanda</h3>
-      <div class="form-row">
-        <label>Nome</label>
-        <input id="newName" class="input" placeholder="Mesa 7, Cliente Ana…">
-      </div>
-      <div class="form-row">
-        <label>Etiqueta (opcional)</label>
-        <input id="newLabel" class="input" placeholder="Varanda, Delivery, VIP…">
-      </div>
-      <div class="form-row">
-        <label>Cor</label>
-        <div class="swatches" id="newColorSwatches"></div>
-      </div>
-      <div class="row">
-        <button class="btn accent" id="createComandaConfirm">Criar</button>
-        <button class="btn ghost right" id="cancelNew">Cancelar</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Visão Geral -->
-  <div id="overviewModal" class="modal" aria-hidden="true">
-    <div class="panel">
-      <h3>Visão geral das comandas</h3>
-      <div id="board" class="board"></div>
-      <div class="row" style="margin-top:8px">
-        <button class="btn ghost right" id="closeOverviewBtn">Fechar</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Histórico -->
-  <div id="historyModal" class="modal" aria-hidden="true">
-    <div class="panel">
-      <h3>Histórico de comandas fechadas</h3>
-
-      <!-- Controles de filtro e exportação -->
-      <div class="row" style="margin-bottom:8px; gap:8px; flex-wrap:wrap">
-        <select id="histRange" class="select" title="Período">
-          <option value="today">Hoje</option>
-          <option value="7">Últimos 7 dias</option>
-          <option value="30">Últimos 30 dias</option>
-          <option value="all" selected>Tudo</option>
-          <option value="custom">Personalizado…</option>
-        </select>
-        <input id="histFrom" type="date" class="input" style="width:170px" disabled>
-        <input id="histTo" type="date" class="input" style="width:170px" disabled>
-
-        <select id="histPay" class="select" title="Forma de pagamento">
-          <option value="all" selected>Todas as formas</option>
-          <option value="PIX">PIX</option>
-          <option value="Cartão de Débito">Cartão de Débito</option>
-          <option value="Cartão de Crédito">Cartão de Crédito</option>
-        </select>
-
-        <select id="histLabel" class="select" title="Etiqueta">
-          <option value="all" selected>Todas as etiquetas</option>
-        </select>
-
-        <button class="btn" id="exportHistoryJSON">Exportar JSON</button>
-        <button class="btn" id="exportHistoryCSV">Exportar CSV</button>
-        <button class="btn warn" id="exportHistoryPDF">Exportar PDF</button>
-      </div>
-
-      <!-- Resumo do período -->
-      <section id="historySummary" class="card" style="margin-bottom:8px"></section>
-
-      <!-- Lista -->
-      <div id="historyBoard" class="board"></div>
-
-      <div class="row" style="margin-top:8px">
-        <button class="btn ghost right" id="closeHistoryBtn">Fechar</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Auxiliares invisíveis -->
-  <div id="qrHidden" style="position:absolute;left:-9999px;top:-9999px"></div>
+  <script src="./assets/firebase-config.js"></script>
+  <script src="./assets/db.firebase.js"></script>
+  <script src="./assets/home.js"></script>
 </body>
 </html>

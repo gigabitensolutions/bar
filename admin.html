@@ -11,9 +11,9 @@
     <div class="wrap">
       <div class="row">
         <h1>🧰 Admin de Produtos</h1>
-        <div class="right row" style="gap:8px">
+        <div class="right row">
           <span id="dbStatusAdmin" class="tag">DB: —</span>
-          <a class="btn ghost" href="./index.html">Voltar</a>
+          <a class="btn" href="./index.html">Voltar</a>
         </div>
       </div>
     </div>
@@ -21,30 +21,15 @@
 
   <main class="wrap">
     <section class="card">
-      <h3>Cadastrar / Editar</h3>
+      <h2>Cadastrar / Editar</h2>
       <div class="grid-2">
-        <div class="form-row">
-          <label>ID</label>
-          <input id="pId" class="input" placeholder="ex: cerveja_lata_350">
-        </div>
-        <div class="form-row">
-          <label>Nome</label>
-          <input id="pName" class="input" placeholder="ex: Cerveja Lata 350ml">
-        </div>
-        <div class="form-row">
-          <label>Preço</label>
-          <input id="pPrice" class="input" placeholder="ex: 12.00" inputmode="decimal">
-        </div>
-        <div class="form-row">
-          <label>Categoria</label>
-          <input id="pCat" class="input" placeholder="ex: Cerveja, Doses, Comidas">
-        </div>
-        <div class="form-row" style="grid-column:1/-1">
-          <label>Imagem (URL)</label>
-          <input id="pImg" class="input" placeholder="https://… (ou deixe vazio)">
-        </div>
+        <div class="form-row"><label>ID</label><input id="pId" class="input" placeholder="ex.: cerveja_lata_350"></div>
+        <div class="form-row"><label>Nome</label><input id="pName" class="input" placeholder="Cerveja Lata 350ml"></div>
+        <div class="form-row"><label>Preço</label><input id="pPrice" class="input" inputmode="decimal" placeholder="12,00"></div>
+        <div class="form-row"><label>Categoria</label><input id="pCat" class="input" placeholder="Cerveja"></div>
+        <div class="form-row" style="grid-column:1/-1"><label>Imagem (URL)</label><input id="pImg" class="input" placeholder="https://..."></div>
       </div>
-      <div class="row" style="margin-top:8px">
+      <div class="row" style="margin-top:10px">
         <button class="btn accent" id="addBtn">Salvar/Atualizar</button>
         <button class="btn danger" id="delBtn">Excluir</button>
         <button class="btn" id="exportBtn">Exportar JSON</button>
@@ -54,24 +39,20 @@
     </section>
 
     <section class="card" style="margin-top:12px">
-      <h3>Produtos</h3>
+      <h2>Produtos</h2>
       <table id="tbl" class="table">
-        <thead>
-          <tr>
-            <th>Img</th><th>ID</th><th>Nome</th><th>Preço</th><th>Categoria</th>
-          </tr>
-        </thead>
+        <thead><tr><th>Img</th><th>ID</th><th>Nome</th><th>Preço</th><th>Categoria</th></tr></thead>
         <tbody></tbody>
       </table>
     </section>
   </main>
 
-  <!-- Firebase (compat) + config + wrapper DB -->
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+  <footer class="footer">
+    CRUD direto no Firestore via Firebase Functions (Admin SDK).
+  </footer>
+
   <script src="./assets/firebase-config.js"></script>
   <script src="./assets/db.firebase.js"></script>
-
   <script src="./assets/admin.js"></script>
 </body>
 </html>

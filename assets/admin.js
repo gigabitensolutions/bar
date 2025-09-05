@@ -202,12 +202,12 @@
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td style="width:44px">
-          <img src="${img}" alt="" style="width:32px;height:32px;object-fit:cover;border-radius:6px;border:1px solid rgba(148,163,184,.25)" onerror="this.src='./assets/placeholder.svg'">
+          <img src="\${img}" alt="" style="width:32px;height:32px;object-fit:cover;border-radius:6px;border:1px solid rgba(148,163,184,.25)" onerror="this.src='./assets/placeholder.svg'">
         </td>
-        <td>${escapeHTML(p.id)}</td>
-        <td>${escapeHTML(p.name)}</td>
-        <td>${BRL.format(Number(p.price||0))}</td>
-        <td>${escapeHTML(p.category)}</td>
+        <td>\${escapeHTML(p.id)}</td>
+        <td>\${escapeHTML(p.name)}</td>
+        <td>\${BRL.format(Number(p.price||0))}</td>
+        <td>\${escapeHTML(p.category)}</td>
       `;
       tr.style.cursor = 'pointer';
       tr.onclick = () => {

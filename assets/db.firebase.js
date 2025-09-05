@@ -21,18 +21,25 @@
 
   const DB = {
     enabled: !!API,
+    // Produtos
     getProducts: async ()=> (await call("/products")).products,
     setProduct: async (p)=> { await call("/products", { method:"POST", body:p }); },
     deleteProduct: async (id)=> { await call(`/products/${encodeURIComponent(id)}`, { method:"DELETE" }); },
-    getOpenTabs: async ()=> (await call("/tabs/open")).tabs,
+    // Comandas
     upsertTab: async (tab)=> { await call("/tabs/upsert", { method:"POST", body:tab }); },
     deleteTab: async (id)=> { await call(`/tabs/${encodeURIComponent(id)}`, { method:"DELETE" }); },
-    getHistory: async ()=> (await call("/history")).history,
+    getOpenTabs: async ()=> (await call("/tabs/open")).tabs,
+    // Histórico
     saveHistory: async (rec)=> { await call("/history/save", { method:"POST", body:rec }); },
+    getHistory: async ()=> (await call("/history")).history,
+    // Settings
     getSettings: async ()=> (await call("/settings")).settings || {},
     setSettings: async (s)=> { await call("/settings", { method:"PATCH", body:s }); },
+    // Sequência
     nextHistorySeq: async ()=> (await call("/seq/next", { method:"POST" })).value,
+    // Fechamento atômico
     closeComanda: async (tab)=> (await call("/close-comanda", { method:"POST", body:tab })).record,
+    // Health
     healthCheck: async ()=> await call("/health")
   };
 
