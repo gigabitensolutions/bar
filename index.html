@@ -4,15 +4,15 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>Comandas — POS Simples</title>
-  <meta name="description" content="POS de comandas com PIX fixo, pagamento cartão, PDF, visão geral, impressão térmica 80mm, e modo toque grande.">
+  <meta name="description" content="POS de comandas com PIX, cartões, PDF, impressão 80mm, histórico e visão geral.">
   <link rel="stylesheet" href="./assets/app.css"/>
   <link rel="stylesheet" href="./assets/print.css" media="print"/>
 
-  <!-- Libs: jsPDF e QRCode (CDN) -->
+  <!-- Libs -->
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 
-  <!-- App JS -->
+  <!-- App -->
   <script defer src="./assets/pos.js"></script>
 </head>
 <body>
@@ -22,6 +22,7 @@
         <h1>🧾 Comandas</h1>
         <div class="right row">
           <button class="btn" id="bigTouchBtn" title="Aumentar áreas de toque">Toque grande</button>
+          <button class="btn" id="historyBtn" title="Ver histórico">Histórico</button>
           <select id="comandaSelect" class="select"></select>
           <button class="btn" id="overviewBtn" title="Visão geral">Visão geral</button>
           <button class="btn" id="newComandaBtn" title="Nova comanda">Nova</button>
@@ -145,6 +146,33 @@
       <div id="board" class="board"></div>
       <div class="row" style="margin-top:8px">
         <button class="btn ghost right" id="closeOverviewBtn">Fechar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Histórico -->
+  <div id="historyModal" class="modal" aria-hidden="true">
+    <div class="panel">
+      <h3>Histórico de comandas fechadas</h3>
+
+      <!-- NOVO: filtros e exportações -->
+      <div class="row" style="margin-bottom:8px">
+        <select id="histRange" class="select" title="Período">
+          <option value="today">Hoje</option>
+          <option value="7">Últimos 7 dias</option>
+          <option value="30">Últimos 30 dias</option>
+          <option value="all" selected>Tudo</option>
+          <option value="custom">Personalizado…</option>
+        </select>
+        <input id="histFrom" type="date" class="input" style="width:170px" disabled>
+        <input id="histTo" type="date" class="input" style="width:170px" disabled>
+        <button class="btn" id="exportHistoryJSON">Exportar JSON</button>
+        <button class="btn" id="exportHistoryCSV">Exportar CSV</button>
+      </div>
+
+      <div id="historyBoard" class="board"></div>
+      <div class="row" style="margin-top:8px">
+        <button class="btn ghost right" id="closeHistoryBtn">Fechar</button>
       </div>
     </div>
   </div>

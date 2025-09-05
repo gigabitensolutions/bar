@@ -13,6 +13,7 @@ const $ = s => document.querySelector(s);
 const $$ = s => Array.from(document.querySelectorAll(s));
 const uid = () => Math.random().toString(36).slice(2,10);
 const sum = arr => arr.reduce((a,b)=>a+b,0);
+const pad4 = n => String(n).padStart(4,'0');
 
 /* ========= LocalStorage Keys ========= */
 const LS_KEYS = {
@@ -20,7 +21,9 @@ const LS_KEYS = {
   ACTIVE: 'activeComandaId_v3',
   PRODUCTS: 'products_cache_v1',
   SERVICE: 'service10_v1',
-  BIGTOUCH: 'ui_big_touch_v1'
+  BIGTOUCH: 'ui_big_touch_v1',
+  HISTORY: 'comandas_history_v1',
+  HSEQ: 'comandas_history_seq_v1'
 };
 
 /* ========= Estado ========= */
@@ -32,16 +35,22 @@ let state = {
   comandas: {},
   activeComandaId: null,
   service10: JSON.parse(localStorage.getItem(LS_KEYS.SERVICE) || 'false'),
-  bigTouch: localStorage.getItem(LS_KEYS.BIGTOUCH) === '1'
+  bigTouch: localStorage.getItem(LS_KEYS.BIGTOUCH) === '1',
+  history: [],
+  hseq: parseInt(localStorage.getItem(LS_KEYS.HSEQ) || '1', 10)
 };
+// último conjunto filtrado (para export)
+let lastHistoryView = [];
 
 /* ========= Persistência ========= */
 function loadPersisted(){
   try{
     const c = JSON.parse(localStorage.getItem(LS_KEYS.COMANDAS) || '{}');
     const a = localStorage.getItem(LS_KEYS.ACTIVE);
+    const h = JSON.parse(localStorage.getItem(LS_KEYS.HISTORY) || '[]');
     state.comandas = c;
     state.activeComandaId = (a && c[a]) ? a : null;
+    state.history = Array.isArray(h) ? h : [];
   }catch(e){}
 }
 function persist(){
@@ -49,6 +58,8 @@ function persist(){
   localStorage.setItem(LS_KEYS.ACTIVE, state.activeComandaId || '');
   localStorage.setItem(LS_KEYS.SERVICE, JSON.stringify(state.service10));
   localStorage.setItem(LS_KEYS.BIGTOUCH, state.bigTouch ? '1' : '0');
+  localStorage.setItem(LS_KEYS.HISTORY, JSON.stringify(state.history));
+  localStorage.setItem(LS_KEYS.HSEQ, String(state.hseq));
 }
 
 /* ========= Produtos ========= */
@@ -90,10 +101,165 @@ function clearItems(){
   const c = getActive(); if(!c) return;
   c.items = {}; persist(); updateSummaryBar(); if($('#drawer').classList.contains('open')) renderDrawer();
 }
+
+/* ========= Histórico ========= */
+function archiveComandaSnapshot(c){
+  const items = Object.values(c.items||{});
+  if(items.length===0) return null;
+
+  const subtotal = sum(items.map(i=>i.unit*i.qty));
+  const service = state.service10 ? subtotal*0.10 : 0;
+  const total = subtotal + service;
+
+  const snap = {
+    number: state.hseq++,
+    comandaId: c.id,
+    name: c.name,
+    label: c.label || '',
+    color: c.color || '#3b82f6',
+    createdAt: c.createdAt || Date.now(),
+    closedAt: Date.now(),
+    payMethod: c.payMethod || 'PIX',
+    service10: !!state.service10,
+    reversed: false,
+    reversedAt: null,
+    items: items.map(i=>({ id:i.id, name:i.name, unit:i.unit, qty:i.qty, total:i.unit*i.qty })),
+    subtotal, service, total
+  };
+  state.history.unshift(snap);
+  persist();
+  return snap;
+}
+function startOfDay(ts){ const d = new Date(ts); d.setHours(0,0,0,0); return +d; }
+function endOfDay(ts){ const d = new Date(ts); d.setHours(23,59,59,999); return +d; }
+function getHistoryFilterRange(){
+  const sel = $('#histRange');
+  const v = sel ? sel.value : 'all';
+  const now = new Date();
+  if(v==='today'){
+    return {from: startOfDay(now), to: endOfDay(now)};
+  }else if(v==='7'){
+    const from = startOfDay(new Date(now.getFullYear(),now.getMonth(), now.getDate()-6));
+    return {from, to: endOfDay(now)};
+  }else if(v==='30'){
+    const from = startOfDay(new Date(now.getFullYear(),now.getMonth(), now.getDate()-29));
+    return {from, to: endOfDay(now)};
+  }else if(v==='custom'){
+    const f = $('#histFrom').value ? startOfDay(new Date($('#histFrom').value)) : 0;
+    const t = $('#histTo').value ? endOfDay(new Date($('#histTo').value)) : Number.MAX_SAFE_INTEGER;
+    return {from: f, to: t};
+  }
+  return {from: 0, to: Number.MAX_SAFE_INTEGER}; // all
+}
+function filterHistory(){
+  const {from,to} = getHistoryFilterRange();
+  return state.history.filter(rec => rec.closedAt>=from && rec.closedAt<=to);
+}
+function renderHistory(){
+  const board = $('#historyBoard'); board.innerHTML='';
+  const list = filterHistory();
+  lastHistoryView = list.slice(); // para export
+
+  if(!list.length){
+    board.innerHTML = '<div class="muted">Nenhum registro neste período.</div>';
+    return;
+  }
+  list.forEach(rec=>{
+    const div = document.createElement('div'); div.className='tile';
+    const date = new Date(rec.closedAt).toLocaleString('pt-BR');
+    const itensCount = rec.items.reduce((a,b)=>a+b.qty,0);
+    const tags = [
+      rec.label || '—',
+      rec.reversed ? `<span class="tag" style="border-color:#ef4444;color:#ef4444">ESTORNADO</span>` : ''
+    ].filter(Boolean).join(' ');
+    div.innerHTML = `
+      <div class="flex">
+        <div><strong>#${pad4(rec.number)}</strong> • ${date}</div>
+        <div class="tag">${tags || '—'}</div>
+      </div>
+      <div class="mini" style="margin-top:4px">
+        ${rec.name} • ${itensCount} ${itensCount===1?'item':'itens'} • ${BRL.format(rec.total)} • ${rec.payMethod} ${rec.service10?'• c/ 10%':''}
+      </div>
+      <div class="row" style="margin-top:8px; flex-wrap:wrap; gap:8px">
+        <button class="btn" data-det>Detalhes</button>
+        <button class="btn warn" data-pdf>Gerar PDF</button>
+        <button class="btn" data-reopen>Reabrir (clonar)</button>
+        <button class="btn danger" data-reverse>${rec.reversed?'Desfazer estorno':'Estornar'}</button>
+      </div>
+      <div class="card" data-details style="display:none; margin-top:8px">
+        ${rec.items.map(i=>`
+          <div class="line">
+            <div>
+              <div class="name">${i.name}</div>
+              <div class="mini">${i.qty} × ${BRL.format(i.unit)}</div>
+            </div>
+            <strong>${BRL.format(i.total)}</strong>
+          </div>
+        `).join('')}
+        <div class="totals">
+          <div class="line"><span>Subtotal</span><strong>${BRL.format(rec.subtotal)}</strong></div>
+          <div class="line"><span>Serviço (10%)</span><strong>${BRL.format(rec.service)}</strong></div>
+          <div class="line"><span>Total</span><strong>${BRL.format(rec.total)}</strong></div>
+        </div>
+      </div>
+    `;
+    const panel = div.querySelector('[data-details]');
+    div.querySelector('[data-det]').onclick = ()=>{ panel.style.display = panel.style.display==='none' ? 'block' : 'none'; };
+    div.querySelector('[data-pdf]').onclick = ()=> generatePDFForRecord(rec);
+    div.querySelector('[data-reopen]').onclick = ()=> reopenFromRecord(rec);
+    div.querySelector('[data-reverse]').onclick = ()=> toggleReverseRecord(rec.number);
+    board.appendChild(div);
+  });
+}
+function toggleReverseRecord(number){
+  const i = state.history.findIndex(r=>r.number===number);
+  if(i<0) return;
+  const rec = state.history[i];
+  rec.reversed = !rec.reversed;
+  rec.reversedAt = rec.reversed ? Date.now() : null;
+  persist();
+  renderHistory();
+}
+function reopenFromRecord(rec){
+  // cria nova comanda clonando itens
+  const newId = createComanda({
+    name: `${rec.name} (reaberta #${pad4(rec.number)})`,
+    label: rec.label,
+    color: rec.color
+  });
+  const c = state.comandas[newId];
+  c.payMethod = rec.payMethod;
+  c.items = {};
+  rec.items.forEach(i=>{
+    const key = i.id || uid();
+    c.items[key] = { id: key, name: i.name, unit: i.unit, qty: i.qty };
+  });
+  // aplica 10% conforme o registro
+  state.service10 = !!rec.service10;
+  persist();
+  updateSummaryBar();
+  $('#historyModal').classList.remove('open');
+  $('#drawer').classList.add('open');
+  renderDrawer();
+  alert(`Comanda reaberta a partir do registro #${pad4(rec.number)} e definida como ativa.`);
+}
+
+/* ========= Fechar comanda ========= */
 function closeComanda(){
   const c = getActive(); if(!c) return;
-  if(confirm(`Fechar comanda "${c.name}"? Isto zera os itens.`)){
-    c.items = {}; persist(); updateSummaryBar(); if($('#drawer').classList.contains('open')) renderDrawer();
+  const hasItems = Object.keys(c.items||{}).length>0;
+  if(!hasItems){
+    if(confirm(`A comanda "${c.name}" está vazia. Deseja apenas zerar sem registrar no histórico?`)){
+      c.items = {}; persist(); renderDrawer(); updateSummaryBar();
+    }
+    return;
+  }
+  if(confirm(`Fechar comanda "${c.name}" e registrar no histórico como PAGA?`)){
+    const snap = archiveComandaSnapshot(c);
+    c.items = {}; // zera após arquivar
+    persist();
+    renderDrawer(); updateSummaryBar();
+    alert(`Comanda fechada! Registro #${pad4(snap.number)} criado no histórico.`);
   }
 }
 
@@ -190,10 +356,8 @@ function renderPayMethods(){
     b.className = 'chip' + (c.payMethod===method?' active':'');
     b.textContent = method;
     b.onclick = ()=>{
-      c.payMethod = method;
-      persist();
-      renderPayMethods();
-      togglePixButton();
+      c.payMethod = method; persist();
+      renderPayMethods(); togglePixButton();
     };
     cont.appendChild(b);
   });
@@ -259,38 +423,94 @@ function shareComanda(){
 }
 async function generatePDF(){
   const c=getActive(); if(!c) return alert('Nenhuma comanda ativa.');
+  const t = calc(c);
+  await generatePDFCore({
+    header:'Comanda',
+    name:c.name, label:c.label, date:new Date(),
+    payMethod:c.payMethod, items:Object.values(c.items),
+    subtotal:t.subtotal, service:t.service, total:t.total,
+    embedPix:c.payMethod==='PIX', txid:c.id
+  });
+}
+async function generatePDFForRecord(rec){
+  await generatePDFCore({
+    header:`Comanda (Histórico #${pad4(rec.number)})`,
+    name:rec.name, label:rec.label, date:new Date(rec.closedAt),
+    payMethod:rec.payMethod, items:rec.items,
+    subtotal:rec.subtotal, service:rec.service, total:rec.total,
+    embedPix:rec.payMethod==='PIX', txid:rec.comandaId
+  });
+}
+async function generatePDFCore(opts){
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF();
-  const t = calc(c);
   let y=14;
-
-  doc.setFontSize(14); doc.text('Comanda', 14, y); y+=6;
+  doc.setFontSize(14); doc.text(opts.header, 14, y); y+=6;
   doc.setFontSize(11);
-  doc.text(`Nome: ${c.name}${c.label?` [${c.label}]`:''}`,14,y); y+=6;
-  doc.text(`Data: ${new Date().toLocaleString('pt-BR')}`,14,y); y+=6;
-  doc.text(`Pagamento: ${c.payMethod}`,14,y); y+=8;
+  doc.text(`Nome: ${opts.name}${opts.label?` [${opts.label}]`:''}`,14,y); y+=6;
+  doc.text(`Data: ${opts.date.toLocaleString('pt-BR')}`,14,y); y+=6;
+  doc.text(`Pagamento: ${opts.payMethod}`,14,y); y+=8;
   doc.setFont(undefined,'bold'); doc.text('Itens',14,y); doc.setFont(undefined,'normal'); y+=6;
 
-  Object.values(c.items).forEach(i=>{
+  opts.items.forEach(i=>{
+    const unit = i.unit ?? i.price ?? 0;
+    const qty = i.qty ?? 1;
+    const total = (i.total!=null) ? i.total : unit*qty;
     doc.text(`${i.name}`,14,y);
-    doc.text(`${i.qty} × ${BRL.format(i.unit)}`,120,y,{align:'left'});
-    doc.text(`${BRL.format(i.unit*i.qty)}`,180,y,{align:'right'});
-    y+=6;
-    if(y>270){ doc.addPage(); y=14; }
+    doc.text(`${qty} × ${BRL.format(unit)}`,120,y,{align:'left'});
+    doc.text(`${BRL.format(total)}`,180,y,{align:'right'});
+    y+=6; if(y>270){ doc.addPage(); y=14; }
   });
   y+=2; doc.line(14,y,196,y); y+=8;
-  doc.text(`Subtotal: ${BRL.format(t.subtotal)}`,14,y); y+=6;
-  doc.text(`Serviço (10%): ${BRL.format(t.service)}`,14,y); y+=6;
-  doc.setFont(undefined,'bold'); doc.text(`Total: ${BRL.format(t.total)}`,14,y); doc.setFont(undefined,'normal'); y+=10;
+  doc.text(`Subtotal: ${BRL.format(opts.subtotal)}`,14,y); y+=6;
+  doc.text(`Serviço (10%): ${BRL.format(opts.service)}`,14,y); y+=6;
+  doc.setFont(undefined,'bold'); doc.text(`Total: ${BRL.format(opts.total)}`,14,y); doc.setFont(undefined,'normal'); y+=10;
 
-  if(c.payMethod==='PIX'){
-    const payload = buildPixPayload(t.total, c.id);
+  if(opts.embedPix){
+    const payload = buildPixPayload(opts.total, opts.txid);
     if(payload){
       const dataUrl = await makeQRDataURL(payload, 180);
       if(dataUrl){ doc.text('PIX (pague pelo QR):',14,y); y+=4; doc.addImage(dataUrl,'PNG',14,y,48,48); y+=54; }
     }
   }
-  doc.save(`comanda-${c.name.toLowerCase().replace(/\s+/g,'-')}.pdf`);
+  const safeName = (opts.name||'comanda').toLowerCase().replace(/\s+/g,'-');
+  doc.save(`comanda-${safeName}.pdf`);
+}
+
+/* ========= Exportação (JSON/CSV) ========= */
+function downloadBlob(content, mime, filename){
+  const blob = new Blob([content], {type: mime});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 1000);
+}
+function exportHistoryJSON(){
+  const data = lastHistoryView.length ? lastHistoryView : filterHistory();
+  downloadBlob(JSON.stringify(data, null, 2), 'application/json', `historico-comandas_${new Date().toISOString().slice(0,10)}.json`);
+}
+function csvEscape(s){ return `"${String(s).replace(/"/g,'""')}"`; }
+function exportHistoryCSV(){
+  const data = lastHistoryView.length ? lastHistoryView : filterHistory();
+  const header = ['numero','data_fechamento','nome','etiqueta','pagamento','servico10','subtotal','servico','total','itens'].join(';');
+  const rows = data.map(r=>{
+    const itens = r.items.map(i=>`${i.qty}x ${i.name} @ ${i.unit.toFixed(2)} = ${i.total.toFixed(2)}`).join(' | ');
+    return [
+      r.number,
+      new Date(r.closedAt).toLocaleString('pt-BR'),
+      csvEscape(r.name),
+      csvEscape(r.label||''),
+      csvEscape(r.payMethod),
+      r.service10 ? '1' : '0',
+      r.subtotal.toFixed(2),
+      r.service.toFixed(2),
+      r.total.toFixed(2),
+      csvEscape(itens)
+    ].join(';');
+  });
+  const csv = [header, ...rows].join('\n');
+  downloadBlob(csv, 'text/csv;charset=utf-8', `historico-comandas_${new Date().toISOString().slice(0,10)}.csv`);
 }
 
 /* ========= PIX ========= */
@@ -430,6 +650,13 @@ async function printThermal80(){
   } else { doPrint(); }
 }
 
+/* ========= UI extra ========= */
+function applyBigTouch(){
+  document.body.classList.toggle('big-touch', !!state.bigTouch);
+  const b = $('#bigTouchBtn');
+  if(b){ b.textContent = state.bigTouch ? 'Toque grande: ON' : 'Toque grande'; b.setAttribute('aria-pressed', state.bigTouch?'true':'false'); }
+}
+
 /* ========= Controles ========= */
 function refreshComandaSelect(){
   const sel = $('#comandaSelect'); sel.innerHTML='';
@@ -469,8 +696,6 @@ function setActiveColor(){
   const current = prompt(`Informe a cor (hex) ou escolha: \n${pal.join(' ')}`, c.color);
   if(current){ c.color=current; persist(); renderDrawer(); renderOverview(); }
 }
-
-/* Importar produtos */
 function importProductsFromFile(f){
   const reader = new FileReader();
   reader.onload = e=>{
@@ -487,16 +712,33 @@ function importProductsFromFile(f){
   reader.readAsText(f);
 }
 
-/* Modo toque grande */
-function applyBigTouch(){
-  document.body.classList.toggle('big-touch', !!state.bigTouch);
-  const b = $('#bigTouchBtn');
-  if(b){ b.textContent = state.bigTouch ? 'Toque grande: ON' : 'Toque grande'; b.setAttribute('aria-pressed', state.bigTouch?'true':'false'); }
-}
-
-/* Boot */
+/* ========= Boot ========= */
 function bindEvents(){
   $('#bigTouchBtn').onclick = ()=>{ state.bigTouch = !state.bigTouch; persist(); applyBigTouch(); };
+
+  $('#historyBtn').onclick = ()=>{
+    // reseta inputs custom quando abre
+    $('#histRange').value = 'all';
+    $('#histFrom').disabled = true; $('#histTo').disabled = true;
+    $('#histFrom').value = ''; $('#histTo').value = '';
+    renderHistory(); $('#historyModal').classList.add('open');
+  };
+  $('#closeHistoryBtn').onclick = ()=>$('#historyModal').classList.remove('open');
+
+  // filtros do histórico
+  $('#histRange').onchange = ()=>{
+    const v = $('#histRange').value;
+    const isCustom = v==='custom';
+    $('#histFrom').disabled = !isCustom;
+    $('#histTo').disabled = !isCustom;
+    renderHistory();
+  };
+  $('#histFrom').onchange = renderHistory;
+  $('#histTo').onchange = renderHistory;
+
+  // exportações
+  $('#exportHistoryJSON').onclick = exportHistoryJSON;
+  $('#exportHistoryCSV').onclick = exportHistoryCSV;
 
   $('#newComandaBtn').onclick = openNewModal;
   $('#cancelNew').onclick = ()=>$('#newModal').classList.remove('open');
