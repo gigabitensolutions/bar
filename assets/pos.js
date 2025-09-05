@@ -39,8 +39,7 @@ let state = {
   history: [],
   hseq: parseInt(localStorage.getItem(LS_KEYS.HSEQ) || '1', 10)
 };
-// último conjunto filtrado (para export)
-let lastHistoryView = [];
+let lastHistoryView = []; // último conjunto filtrado (para export)
 
 /* ========= Persistência ========= */
 function loadPersisted(){
@@ -130,8 +129,10 @@ function archiveComandaSnapshot(c){
   persist();
   return snap;
 }
+
 function startOfDay(ts){ const d = new Date(ts); d.setHours(0,0,0,0); return +d; }
 function endOfDay(ts){ const d = new Date(ts); d.setHours(23,59,59,999); return +d; }
+
 function getHistoryFilterRange(){
   const sel = $('#histRange');
   const v = sel ? sel.value : 'all';
@@ -151,31 +152,97 @@ function getHistoryFilterRange(){
   }
   return {from: 0, to: Number.MAX_SAFE_INTEGER}; // all
 }
+function getHistoryExtraFilters(){
+  const pay = $('#histPay')?.value || 'all';
+  const label = $('#histLabel')?.value || 'all';
+  return {pay, label};
+}
 function filterHistory(){
   const {from,to} = getHistoryFilterRange();
-  return state.history.filter(rec => rec.closedAt>=from && rec.closedAt<=to);
+  const {pay,label} = getHistoryExtraFilters();
+  return state.history.filter(rec => {
+    const inRange = rec.closedAt>=from && rec.closedAt<=to;
+    const byPay = (pay==='all') ? true : rec.payMethod===pay;
+    const byLabel = (label==='all') ? true
+      : (label==='empty' ? !rec.label : rec.label===label);
+    return inRange && byPay && byLabel;
+  });
 }
+
+function calcPeriodTotals(list){
+  const valid = list.filter(r=>!r.reversed);
+  const subtotal = sum(valid.map(r=>r.subtotal));
+  const service  = sum(valid.map(r=>r.service));
+  const total    = sum(valid.map(r=>r.total));
+  const count    = valid.length;
+  const avg      = count ? (total / count) : 0;
+  const byMethod = {
+    'PIX': sum(valid.filter(r=>r.payMethod==='PIX').map(r=>r.total)),
+    'Cartão de Débito': sum(valid.filter(r=>r.payMethod==='Cartão de Débito').map(r=>r.total)),
+    'Cartão de Crédito': sum(valid.filter(r=>r.payMethod==='Cartão de Crédito').map(r=>r.total)),
+  };
+  const reversedCount = list.length - valid.length;
+  return {subtotal, service, total, count, avg, byMethod, reversedCount};
+}
+function renderHistorySummary(stats){
+  const html = `
+    <div class="row" style="flex-wrap:wrap; gap:12px">
+      <div class="tag">Comandas: <strong>${stats.count}</strong>${stats.reversedCount?` <span class="muted">(estornadas: ${stats.reversedCount})</span>`:''}</div>
+      <div class="tag">Subtotal: <strong>${BRL.format(stats.subtotal)}</strong></div>
+      <div class="tag">Serviço: <strong>${BRL.format(stats.service)}</strong></div>
+      <div class="tag">Total: <strong>${BRL.format(stats.total)}</strong></div>
+      <div class="tag">Ticket médio: <strong>${BRL.format(stats.avg)}</strong></div>
+    </div>
+    <div class="row" style="margin-top:8px; gap:8px; flex-wrap:wrap">
+      <div class="tag">PIX: <strong>${BRL.format(stats.byMethod['PIX'])}</strong></div>
+      <div class="tag">Débito: <strong>${BRL.format(stats.byMethod['Cartão de Débito'])}</strong></div>
+      <div class="tag">Crédito: <strong>${BRL.format(stats.byMethod['Cartão de Crédito'])}</strong></div>
+    </div>
+  `;
+  $('#historySummary').innerHTML = html;
+}
+
+function populateHistLabel(){
+  const sel = $('#histLabel');
+  if(!sel) return;
+  const labels = Array.from(new Set(state.history.map(r=>r.label || '').map(s=>s.trim())));
+  labels.sort((a,b)=>a.localeCompare(b,'pt-BR'));
+  sel.innerHTML = `<option value="all" selected>Todas as etiquetas</option>
+                   <option value="empty">Sem etiqueta (—)</option>`;
+  labels.filter(l=>!!l).forEach(l=>{
+    const opt = document.createElement('option');
+    opt.value = l; opt.textContent = l;
+    sel.appendChild(opt);
+  });
+}
+
 function renderHistory(){
   const board = $('#historyBoard'); board.innerHTML='';
   const list = filterHistory();
-  lastHistoryView = list.slice(); // para export
+  lastHistoryView = list.slice();
+
+  // totalizadores
+  const stats = calcPeriodTotals(list);
+  renderHistorySummary(stats);
 
   if(!list.length){
     board.innerHTML = '<div class="muted">Nenhum registro neste período.</div>';
     return;
   }
+
   list.forEach(rec=>{
     const div = document.createElement('div'); div.className='tile';
     const date = new Date(rec.closedAt).toLocaleString('pt-BR');
     const itensCount = rec.items.reduce((a,b)=>a+b.qty,0);
-    const tags = [
-      rec.label || '—',
-      rec.reversed ? `<span class="tag" style="border-color:#ef4444;color:#ef4444">ESTORNADO</span>` : ''
-    ].filter(Boolean).join(' ');
+    const chips = [];
+    chips.push(rec.label ? rec.label : '—');
+    if(rec.reversed) chips.push(`<span class="tag" style="border-color:#ef4444;color:#ef4444">ESTORNADO</span>`);
+    const tagBlock = chips.join(' ');
+
     div.innerHTML = `
       <div class="flex">
         <div><strong>#${pad4(rec.number)}</strong> • ${date}</div>
-        <div class="tag">${tags || '—'}</div>
+        <div class="tag">${tagBlock || '—'}</div>
       </div>
       <div class="mini" style="margin-top:4px">
         ${rec.name} • ${itensCount} ${itensCount===1?'item':'itens'} • ${BRL.format(rec.total)} • ${rec.payMethod} ${rec.service10?'• c/ 10%':''}
@@ -221,7 +288,6 @@ function toggleReverseRecord(number){
   renderHistory();
 }
 function reopenFromRecord(rec){
-  // cria nova comanda clonando itens
   const newId = createComanda({
     name: `${rec.name} (reaberta #${pad4(rec.number)})`,
     label: rec.label,
@@ -234,7 +300,6 @@ function reopenFromRecord(rec){
     const key = i.id || uid();
     c.items[key] = { id: key, name: i.name, unit: i.unit, qty: i.qty };
   });
-  // aplica 10% conforme o registro
   state.service10 = !!rec.service10;
   persist();
   updateSummaryBar();
@@ -256,9 +321,7 @@ function closeComanda(){
   }
   if(confirm(`Fechar comanda "${c.name}" e registrar no histórico como PAGA?`)){
     const snap = archiveComandaSnapshot(c);
-    c.items = {}; // zera após arquivar
-    persist();
-    renderDrawer(); updateSummaryBar();
+    c.items = {}; persist(); renderDrawer(); updateSummaryBar();
     alert(`Comanda fechada! Registro #${pad4(snap.number)} criado no histórico.`);
   }
 }
@@ -421,6 +484,7 @@ function shareComanda(){
   if(navigator.share){ navigator.share({title:'Comanda', text}).catch(()=>{}); }
   else { navigator.clipboard.writeText(text).then(()=>alert('Resumo copiado!')).catch(()=>alert(text)); }
 }
+
 async function generatePDF(){
   const c=getActive(); if(!c) return alert('Nenhuma comanda ativa.');
   const t = calc(c);
@@ -477,7 +541,7 @@ async function generatePDFCore(opts){
   doc.save(`comanda-${safeName}.pdf`);
 }
 
-/* ========= Exportação (JSON/CSV) ========= */
+/* ========= Exportações (JSON/CSV/PDF) ========= */
 function downloadBlob(content, mime, filename){
   const blob = new Blob([content], {type: mime});
   const a = document.createElement('a');
@@ -493,7 +557,7 @@ function exportHistoryJSON(){
 function csvEscape(s){ return `"${String(s).replace(/"/g,'""')}"`; }
 function exportHistoryCSV(){
   const data = lastHistoryView.length ? lastHistoryView : filterHistory();
-  const header = ['numero','data_fechamento','nome','etiqueta','pagamento','servico10','subtotal','servico','total','itens'].join(';');
+  const header = ['numero','data_fechamento','nome','etiqueta','pagamento','servico10','subtotal','servico','total','itens','estornado'].join(';');
   const rows = data.map(r=>{
     const itens = r.items.map(i=>`${i.qty}x ${i.name} @ ${i.unit.toFixed(2)} = ${i.total.toFixed(2)}`).join(' | ');
     return [
@@ -506,11 +570,58 @@ function exportHistoryCSV(){
       r.subtotal.toFixed(2),
       r.service.toFixed(2),
       r.total.toFixed(2),
-      csvEscape(itens)
+      csvEscape(itens),
+      r.reversed ? '1':'0'
     ].join(';');
   });
   const csv = [header, ...rows].join('\n');
   downloadBlob(csv, 'text/csv;charset=utf-8', `historico-comandas_${new Date().toISOString().slice(0,10)}.csv`);
+}
+async function exportHistoryPDF(){
+  const { jsPDF } = window.jspdf;
+  const data = lastHistoryView.length ? lastHistoryView : filterHistory();
+  const stats = calcPeriodTotals(data);
+  const doc = new jsPDF();
+  let y = 14;
+
+  // Cabeçalho
+  doc.setFontSize(14);
+  doc.text('Relatório de Comandas', 14, y); y += 7;
+  doc.setFontSize(11);
+
+  // Descrição dos filtros
+  const {from,to} = getHistoryFilterRange();
+  const {pay,label} = getHistoryExtraFilters();
+  const fmt = ts => (ts===0||ts===Number.MAX_SAFE_INTEGER) ? '—' : new Date(ts).toLocaleDateString('pt-BR');
+  const payTxt = (pay==='all'?'Todas':pay);
+  const labelTxt = (label==='all'?'Todas':(label==='empty'?'Sem etiqueta (—)':label));
+  doc.text(`Período: ${fmt(from)} a ${fmt(to)} • Pagamento: ${payTxt} • Etiqueta: ${labelTxt}`, 14, y);
+  y += 8;
+
+  // Totalizadores
+  doc.text(`Comandas (válidas): ${stats.count}  •  Estornadas: ${stats.reversedCount}`, 14, y); y+=6;
+  doc.text(`Subtotal: ${BRL.format(stats.subtotal)}  •  Serviço: ${BRL.format(stats.service)}  •  Total: ${BRL.format(stats.total)}`, 14, y); y+=6;
+  doc.text(`Ticket médio: ${BRL.format(stats.avg)}`, 14, y); y+=8;
+  doc.text(`Por método — PIX: ${BRL.format(stats.byMethod['PIX'])} | Débito: ${BRL.format(stats.byMethod['Cartão de Débito'])} | Crédito: ${BRL.format(stats.byMethod['Cartão de Crédito'])}`, 14, y);
+  y += 10;
+
+  // Lista (simples)
+  doc.setFont(undefined,'bold'); doc.text('Registros', 14, y); doc.setFont(undefined,'normal'); y+=6;
+  if(!data.length){
+    doc.text('Nenhum registro no período/filtro.', 14, y);
+  }else{
+    data.forEach(r=>{
+      const line1 = `#${pad4(r.number)} • ${new Date(r.closedAt).toLocaleString('pt-BR')} • ${r.name}`;
+      const line2 = `Etiqueta: ${r.label||'—'} • Pagamento: ${r.payMethod}${r.reversed?' • ESTORNADO':''}`;
+      const line3 = `Total: ${BRL.format(r.total)} (Subtotal ${BRL.format(r.subtotal)} + Serviço ${BRL.format(r.service)})`;
+      doc.text(line1, 14, y); y+=6;
+      doc.text(line2, 14, y); y+=6;
+      doc.text(line3, 14, y); y+=8;
+      if(y>270){ doc.addPage(); y=14; }
+    });
+  }
+
+  doc.save(`relatorio-comandas_${new Date().toISOString().slice(0,10)}.pdf`);
 }
 
 /* ========= PIX ========= */
@@ -717,11 +828,12 @@ function bindEvents(){
   $('#bigTouchBtn').onclick = ()=>{ state.bigTouch = !state.bigTouch; persist(); applyBigTouch(); };
 
   $('#historyBtn').onclick = ()=>{
-    // reseta inputs custom quando abre
     $('#histRange').value = 'all';
     $('#histFrom').disabled = true; $('#histTo').disabled = true;
     $('#histFrom').value = ''; $('#histTo').value = '';
-    renderHistory(); $('#historyModal').classList.add('open');
+    populateHistLabel();
+    renderHistory();
+    $('#historyModal').classList.add('open');
   };
   $('#closeHistoryBtn').onclick = ()=>$('#historyModal').classList.remove('open');
 
@@ -735,10 +847,13 @@ function bindEvents(){
   };
   $('#histFrom').onchange = renderHistory;
   $('#histTo').onchange = renderHistory;
+  $('#histPay').onchange = renderHistory;
+  $('#histLabel').onchange = renderHistory;
 
   // exportações
   $('#exportHistoryJSON').onclick = exportHistoryJSON;
   $('#exportHistoryCSV').onclick = exportHistoryCSV;
+  $('#exportHistoryPDF').onclick = exportHistoryPDF;
 
   $('#newComandaBtn').onclick = openNewModal;
   $('#cancelNew').onclick = ()=>$('#newModal').classList.remove('open');
