@@ -1,5 +1,4 @@
 /* assets/print.css */
 @media print {
-  header, .bar, .chips, .toolbar { display:none !important; }
-  #printArea { position:static !important; left:auto; top:auto; }
+  header, .footer { display:none !important; }
 }
