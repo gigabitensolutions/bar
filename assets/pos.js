@@ -30,23 +30,44 @@ let state = {
 let lastHistoryView = [];
 
 /* ========= Health UI ========= */
-function setDBBadge(info){
-  const el = $('#dbStatus');
-  if(!el){ return; }
-  if(!window.DB?.enabled){
-    el.textContent = 'DB: OFF';
+function setDBBadgeText(text, ok=null){
+  const el = $('#dbStatus'); if(!el) return;
+  el.textContent = text;
+  if(ok===null){ // neutro
+    el.style.borderColor = '#64748b'; el.style.color = '#64748b';
+  }else if(ok===true){
+    el.style.borderColor = '#22c55e'; el.style.color = '#22c55e';
+  }else{
     el.style.borderColor = '#ef4444'; el.style.color = '#ef4444';
+  }
+}
+
+async function runHealth(){
+  // Motivos comuns de OFF:
+  if (typeof firebase === 'undefined') {
+    setDBBadgeText('DB: OFF (SDK)', false);
+    console.warn('[DB] Firebase SDK não carregou. Verifique se gstatic.com não está bloqueado e a ordem dos scripts.');
     return;
   }
-  const ok = !!info?.rulesOk;
-  el.textContent = ok ? 'DB: OK' : 'DB: ERRO';
-  el.style.borderColor = ok ? '#22c55e' : '#ef4444';
-  el.style.color = ok ? '#22c55e' : '#ef4444';
-}
-async function runHealth(){
-  if(!window.DB?.enabled){ setDBBadge(); return; }
-  const r = await window.DB.healthCheck();
-  setDBBadge(r);
+  if (!window.FIREBASE_CONFIG || !window.FIREBASE_CONFIG.projectId) {
+    setDBBadgeText('DB: OFF (config)', false);
+    console.warn('[DB] FIREBASE_CONFIG não encontrado ou sem projectId. Renomeie/corra o assets/firebase-config.js e preencha.');
+    return;
+  }
+  if (!window.DB?.enabled) {
+    // SDK + config existem, mas o wrapper não habilitou (erro na init).
+    setDBBadgeText('DB: OFF', false);
+    console.warn('[DB] Wrapper não habilitado. Veja erros no console (inicialização).');
+    return;
+  }
+  try{
+    const r = await window.DB.healthCheck();
+    if (r.rulesOk) setDBBadgeText('DB: OK', true);
+    else setDBadgeText('DB: ERRO', false); // regras/rede
+  }catch(e){
+    console.error(e);
+    setDBBadgeText('DB: ERRO', false);
+  }
 }
 
 /* ========= Produtos ========= */
