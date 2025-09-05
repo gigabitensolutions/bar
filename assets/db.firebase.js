@@ -1,7 +1,7 @@
 // assets/db.firebase.js
 (function(){
   const cfg = window.FIREBASE_CONFIG || {};
-  const API = (cfg.BACKEND_URL || "").replace(/\/+$/,''); // sem barra final
+  const API = (cfg.BACKEND_URL || "").replace(/\/+$/,'');
   const TENANT = cfg.TENANT_ID || "default";
 
   async function call(path, { method="GET", body } = {}){

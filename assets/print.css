@@ -1,4 +1,3 @@
-/* assets/print.css */
 @media print {
   header, .bar, .chips, .toolbar, .footer { display:none !important; }
   #printArea { position:static !important; left:auto; top:auto; }

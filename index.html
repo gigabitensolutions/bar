@@ -2,11 +2,10 @@
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
   <title>Comandas — POS</title>
   <link rel="stylesheet" href="./assets/app.css"/>
   <link rel="stylesheet" href="./assets/print.css" media="print"/>
-  <!-- libs -->
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 </head>
@@ -44,7 +43,6 @@
     </div>
   </div>
 
-  <!-- Drawer (dialog) -->
   <dialog id="drawerDlg">
     <div class="modal">
       <div class="head">
@@ -55,7 +53,6 @@
     </div>
   </dialog>
 
-  <!-- PIX dialog -->
   <dialog id="pixDlg">
     <div class="modal">
       <div class="head">
@@ -72,7 +69,6 @@
     </div>
   </dialog>
 
-  <!-- Histórico dialog -->
   <dialog id="histDlg">
     <div class="modal">
       <div class="head">
@@ -105,10 +101,8 @@
     </div>
   </dialog>
 
-  <!-- Área oculta p/ impressão 80mm -->
   <div id="printArea"></div>
 
-  <!-- App scripts -->
   <script src="./assets/firebase-config.js"></script>
   <script src="./assets/db.firebase.js"></script>
   <script src="./assets/pos.js"></script>

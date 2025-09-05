@@ -1,12 +1,10 @@
-// assets/pos.js — POS Comandas (rebuild para GitHub Pages)
-// Requer: window.DB (db.firebase.js), jsPDF (cdn), QRCode.js (cdn)
+// assets/pos.js — POS mobile/tablet
 
 (function(){
   const $ = s => document.querySelector(s);
   const BRL = new Intl.NumberFormat('pt-BR', { style:'currency', currency:'BRL' });
   const uid = () => Math.random().toString(36).slice(2,10);
 
-  // PIX fixo (solicitado)
   const PIX_CFG = { KEY:'edab0cd5-ecd4-4050-87f7-fbaf98899713', MERCHANT:'COMANDA BAR', CITY:'BRASIL', DESC:'COMANDA' };
   const PAYMENT_METHODS = ['PIX', 'Cartão de Débito', 'Cartão de Crédito'];
 
@@ -26,13 +24,13 @@
   }
 
   async function loadProducts(){
-    const grid = $('#grid');
+    const grid = '#grid';
     try{
       const arr = await window.DB.getProducts();
       state.products = Array.isArray(arr) ? arr : [];
       const cats = new Set(['Todos']); state.products.forEach(p => cats.add(p.category||'Outros')); state.categories = Array.from(cats);
       renderChips(); renderGrid();
-    }catch(e){ console.error(e); if(grid) grid.innerHTML='<div class="muted">Erro ao carregar produtos.</div>'; }
+    }catch(e){ console.error(e); const el=document.querySelector(grid); if(el) el.innerHTML='<div class="muted">Erro ao carregar produtos.</div>'; }
   }
   function renderChips(){
     const box = $('#chips'); if(!box) return; box.innerHTML='';
@@ -51,7 +49,7 @@
     return okCat && okQ;
   }
   function renderGrid(){
-    const grid = $('#grid'); if(!grid) return;
+    const grid = document.querySelector('#grid'); if(!grid) return;
     const list = state.products.filter(matches);
     if(!list.length){ grid.innerHTML = '<div class="muted">Nenhum produto.</div>'; return; }
     grid.innerHTML='';
@@ -76,7 +74,7 @@
     refreshComandaSelect(); renderDrawer(); return c;
   }
   function refreshComandaSelect(){
-    const sel = $('#comandaSelect'); if(!sel) return;
+    const sel = document.querySelector('#comandaSelect'); if(!sel) return;
     sel.innerHTML='';
     Object.values(state.comandas).forEach(c=>{
       if(c.status!=='open') return;
@@ -101,7 +99,7 @@
   }
   function subtotal(c){ return Object.values(c.items||{}).reduce((s,i)=> s + Number(i.unit||0)*Number(i.qty||0), 0); }
   function renderDrawer(){
-    const c = getActive(); const box = $('#drawer'); if(!box) return;
+    const c = getActive(); const box = document.querySelector('#drawer'); if(!box) return;
     if(!c){ box.innerHTML = '<div class="muted">Nenhuma comanda ativa.</div>'; updateSummary(); return; }
     const items = Object.values(c.items||{});
     if(!items.length){
@@ -113,9 +111,9 @@
       box.innerHTML = items.map(it => `
         <div class="row line">
           <div style="flex:1"><div class="name">${it.name}</div><div class="muted">${BRL.format(it.unit)} • Qtd: ${it.qty}</div></div>
-          <div class="row">
-            <button class="btn" data-action="qty-" data-id="${it.id}">-</button>
-            <button class="btn" data-action="qty+" data-id="${it.id}">+</button>
+          <div class="qty">
+            <button class="btn" aria-label="Diminuir" data-action="qty-" data-id="${it.id}">−</button>
+            <button class="btn" aria-label="Aumentar" data-action="qty+" data-id="${it.id}">+</button>
           </div>
           <div class="price">${BRL.format(it.unit*it.qty)}</div>
         </div>`).join('') + `
@@ -132,16 +130,16 @@
       const id = b.getAttribute('data-id'); const act = b.getAttribute('data-action');
       b.addEventListener('click', ()=> updateQty(id, act==='qty+'?+1:-1));
     });
-    const paySel = $('#paySel'); if(paySel){ paySel.onchange = ()=>{ c.payMethod = paySel.value; if(window.DB?.enabled){ window.DB.upsertTab(c).catch(()=>{}); } }; }
-    const svc = $('#svc10'); if(svc){ svc.onchange = ()=>{ state.service10 = !!svc.checked; window.DB?.setSettings({ service10: state.service10 }).catch(()=>{}); updateSummary(); }; }
-    $('#btnPix')?.addEventListener('click', showPix);
-    $('#btnPrint')?.addEventListener('click', print80);
-    $('#btnPdf')?.addEventListener('click', pdf);
-    $('#btnClose')?.addEventListener('click', closeComanda);
+    const paySel = document.querySelector('#paySel'); if(paySel){ paySel.onchange = ()=>{ c.payMethod = paySel.value; if(window.DB?.enabled){ window.DB.upsertTab(c).catch(()=>{}); } }; }
+    const svc = document.querySelector('#svc10'); if(svc){ svc.onchange = ()=>{ state.service10 = !!svc.checked; window.DB?.setSettings({ service10: state.service10 }).catch(()=>{}); updateSummary(); }; }
+    document.querySelector('#btnPix')?.addEventListener('click', showPix);
+    document.querySelector('#btnPrint')?.addEventListener('click', print80);
+    document.querySelector('#btnPdf')?.addEventListener('click', pdf);
+    document.querySelector('#btnClose')?.addEventListener('click', closeComanda);
     updateSummary();
   }
   function updateSummary(){
-    const c = getActive(); const countEl = $('#summaryCount'); const totalEl = $('#summaryTotal');
+    const c = getActive(); const countEl = document.querySelector('#summaryCount'); const totalEl = document.querySelector('#summaryTotal');
     if(!c){ if(countEl) countEl.textContent='0 itens'; if(totalEl) totalEl.textContent=BRL.format(0); return; }
     const items = Object.values(c.items||{});
     const st = subtotal(c);
@@ -173,15 +171,15 @@
     const c = getActive(); if(!c) return;
     const st = subtotal(c); const svc = state.service10 ? st*0.10 : 0; const tot = st + svc;
     const payload = `PIX|KEY:${PIX_CFG.KEY}|MERCHANT:${PIX_CFG.MERCHANT}|DESC:${PIX_CFG.DESC}|AMOUNT:${tot.toFixed(2)}`;
-    const dlg = $('#pixDlg'); dlg.showModal();
-    const box = $('#qrBox'); box.innerHTML=''; new QRCode(box, { text: payload, width: 220, height: 220 });
-    $('#pixTotal').textContent = BRL.format(tot);
+    const dlg = document.querySelector('#pixDlg'); dlg.showModal();
+    const box = document.querySelector('#qrBox'); box.innerHTML=''; new QRCode(box, { text: payload, width: 240, height: 240 });
+    document.querySelector('#pixTotal').textContent = BRL.format(tot);
   }
   function print80(){
     const c = getActive(); if(!c) return;
     const items = Object.values(c.items||{});
     const st = subtotal(c); const svc = state.service10 ? st*0.10 : 0; const tot = st + svc;
-    const area = $('#printArea');
+    const area = document.querySelector('#printArea');
     area.innerHTML = `
       <div class="ticket">
         <h3>${PIX_CFG.MERCHANT}</h3>
@@ -215,16 +213,16 @@
 
   async function showHistory(){
     if(!window.DB?.enabled) return alert('DB indisponível.');
-    const dlg = $('#histDlg'); dlg.showModal();
+    const dlg = document.querySelector('#histDlg'); dlg.showModal();
     try{ const arr = await window.DB.getHistory(); state.history = Array.isArray(arr) ? arr.sort((a,b)=>b.closedAt-a.closedAt) : []; renderHistory(); }
     catch(e){ console.error(e); }
   }
   function renderHistory(){
-    const tbody = $('#histBody'); if(!tbody) return;
-    const pay = $('#fPay')?.value || 'Todos';
-    const lab = ($('#fLabel')?.value||'').trim().toLowerCase();
-    const t0 = $('#fFrom')?.value ? new Date($('#fFrom').value).getTime() : 0;
-    const t1 = $('#fTo')?.value ? (new Date($('#fTo').value).getTime()+24*60*60*1000-1) : Infinity;
+    const tbody = document.querySelector('#histBody'); if(!tbody) return;
+    const pay = document.querySelector('#fPay')?.value || 'Todos';
+    const lab = (document.querySelector('#fLabel')?.value||'').trim().toLowerCase();
+    const t0 = document.querySelector('#fFrom')?.value ? new Date(document.querySelector('#fFrom').value).getTime() : 0;
+    const t1 = document.querySelector('#fTo')?.value ? (new Date(document.querySelector('#fTo').value).getTime()+24*60*60*1000-1) : Infinity;
     const list = state.history.filter(r=>{
       const okPay = pay==='Todos' || (r.payMethod===pay);
       const okLab = !lab || (String(r.label||'').toLowerCase().includes(lab));
@@ -239,29 +237,29 @@
         <td>${r.payMethod}</td>
         <td>${BRL.format(r.total||0)}</td>
       </tr>`).join('');
-    const tot = list.reduce((s,r)=> s + Number(r.total||0), 0); $('#histTotal').textContent = BRL.format(tot);
+    const tot = list.reduce((s,r)=> s + Number(r.total||0), 0); document.querySelector('#histTotal').textContent = BRL.format(tot);
   }
   function exportHistoryPDF(){
     const { jsPDF } = window.jspdf || {}; if(!jsPDF){ alert('jsPDF não carregado'); return; }
-    const tbody = $('#histBody');
+    const tbody = document.querySelector('#histBody');
     const rows = Array.from(tbody?.querySelectorAll('tr')||[]).map(tr => Array.from(tr.children).map(td => td.textContent.trim()));
     const doc = new jsPDF({ unit:'mm', format:'a4' }); let y = 12;
     doc.setFontSize(14); doc.text('Histórico de Vendas', 12, y); y+=6; doc.setFontSize(10);
     rows.forEach(r=>{ const line = r.join('  |  '); doc.text(line, 12, y); y+=6; if(y>280){ doc.addPage(); y=12; } });
-    doc.setFontSize(12); y+=6; const total = $('#histTotal')?.textContent || ''; doc.text(`Total do período: ${total}`, 12, y);
+    doc.setFontSize(12); y+=6; const total = document.querySelector('#histTotal')?.textContent || ''; doc.text(`Total do período: ${total}`, 12, y);
     doc.save(`historico_${Date.now()}.pdf`);
   }
 
   function bind(){
-    $('#search')?.addEventListener('input', e=>{ state.query = e.target.value; renderGrid(); });
-    $('#clearSearch')?.addEventListener('click', ()=>{ state.query=''; $('#search').value=''; renderGrid(); });
-    $('#newComandaBtn')?.addEventListener('click', ()=>{
+    document.querySelector('#search')?.addEventListener('input', e=>{ state.query = e.target.value; renderGrid(); });
+    document.querySelector('#clearSearch')?.addEventListener('click', ()=>{ state.query=''; document.querySelector('#search').value=''; renderGrid(); });
+    document.querySelector('#newComandaBtn')?.addEventListener('click', ()=>{
       const name = prompt('Nome da comanda (ex.: Mesa 1):','Mesa 1') || 'Mesa';
       const label = prompt('Etiqueta (opcional, ex.: Verde):','') || '';
       const color = prompt('Cor HEX (opcional, ex.: #22c55e):','#22c55e') || '#22c55e';
       createComanda({name,label,color});
     });
-    $('#deleteComandaBtn')?.addEventListener('click', ()=>{
+    document.querySelector('#deleteComandaBtn')?.addEventListener('click', ()=>{
       const c = getActive(); if(!c) return;
       if(confirm(`Excluir comanda "${c.name}"?`)){
         delete state.comandas[c.id];
@@ -270,16 +268,16 @@
         refreshComandaSelect(); renderDrawer();
       }
     });
-    $('#comandaSelect')?.addEventListener('change', e=>{ state.activeComandaId = e.target.value; renderDrawer(); });
-    $('#historyBtn')?.addEventListener('click', showHistory);
-    $('#histClose')?.addEventListener('click', ()=> $('#histDlg').close());
-    $('#histExport')?.addEventListener('click', exportHistoryPDF);
-    $('#fPay')?.addEventListener('change', renderHistory);
-    $('#fLabel')?.addEventListener('input', renderHistory);
-    $('#fFrom')?.addEventListener('change', renderHistory);
-    $('#fTo')?.addEventListener('change', renderHistory);
-    $('#pixClose')?.addEventListener('click', ()=> $('#pixDlg').close());
-    $('#openDrawer')?.addEventListener('click', ()=> $('#drawerDlg').showModal());
+    document.querySelector('#comandaSelect')?.addEventListener('change', e=>{ state.activeComandaId = e.target.value; renderDrawer(); });
+    document.querySelector('#historyBtn')?.addEventListener('click', showHistory);
+    document.querySelector('#histClose')?.addEventListener('click', ()=> document.querySelector('#histDlg').close());
+    document.querySelector('#histExport')?.addEventListener('click', exportHistoryPDF);
+    document.querySelector('#fPay')?.addEventListener('change', renderHistory);
+    document.querySelector('#fLabel')?.addEventListener('input', renderHistory);
+    document.querySelector('#fFrom')?.addEventListener('change', renderHistory);
+    document.querySelector('#fTo')?.addEventListener('change', renderHistory);
+    document.querySelector('#pixClose')?.addEventListener('click', ()=> document.querySelector('#pixDlg').close());
+    document.querySelector('#openDrawer')?.addEventListener('click', ()=> document.querySelector('#drawerDlg').showModal());
   }
 
   async function boot(){

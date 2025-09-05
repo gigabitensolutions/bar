@@ -1,5 +1,4 @@
-// assets/admin.js — CRUD de Produtos (rebuild)
-
+// assets/admin.js — CRUD mobile-friendly
 (function(){
   const $ = s => document.querySelector(s);
   const BRL = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
