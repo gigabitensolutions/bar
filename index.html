@@ -3,38 +3,114 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Comandas — Frontend</title>
+  <title>Comandas — POS</title>
   <link rel="stylesheet" href="./assets/app.css"/>
   <link rel="stylesheet" href="./assets/print.css" media="print"/>
+  <!-- libs -->
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 </head>
 <body>
   <header>
     <div class="wrap">
       <div class="row">
-        <h1>🧾 Comandas — Catálogo</h1>
+        <h1>🧾 Comandas — POS</h1>
         <div class="right row">
           <span id="dbStatus" class="tag">DB: —</span>
-          <a class="btn" href="./admin.html">Admin</a>
-          <button id="refreshBtn" class="btn">Atualizar</button>
+          <button id="historyBtn" class="btn">Histórico</button>
+          <select id="comandaSelect" class="select" style="min-width:160px"></select>
+          <button id="newComandaBtn" class="btn">Nova</button>
+          <button id="deleteComandaBtn" class="btn danger">Excluir</button>
+          <a class="btn ghost" href="./admin.html">Admin</a>
         </div>
       </div>
       <div class="toolbar">
-        <div class="muted">Este índice lista os produtos do banco (Functions). Integre com seu <code>pos.js</code> completo quando quiser.</div>
+        <input id="search" class="input" placeholder="Buscar produto…"/>
+        <button id="clearSearch" class="btn ghost">Limpar</button>
       </div>
+      <div id="chips" class="chips"></div>
     </div>
   </header>
 
-  <main class="wrap">
-    <h2>Produtos</h2>
+  <main>
     <section id="grid" class="grid"></section>
   </main>
 
-  <footer class="footer">
-    Feito para GitHub Pages + Firebase Functions.
-  </footer>
+  <div class="bar">
+    <div class="bar-inner">
+      <span id="summaryCount" class="muted">0 itens</span>
+      <strong id="summaryTotal" class="price">R$ 0,00</strong>
+      <button id="openDrawer" class="btn accent">Abrir comanda</button>
+    </div>
+  </div>
 
+  <!-- Drawer (dialog) -->
+  <dialog id="drawerDlg">
+    <div class="modal">
+      <div class="head">
+        <h2 style="flex:1">Comanda</h2>
+        <button class="btn" onclick="document.getElementById('drawerDlg').close()">Fechar</button>
+      </div>
+      <div id="drawer" class="body"></div>
+    </div>
+  </dialog>
+
+  <!-- PIX dialog -->
+  <dialog id="pixDlg">
+    <div class="modal">
+      <div class="head">
+        <h2 style="flex:1">Pagamento via PIX</h2>
+        <button id="pixClose" class="btn">Fechar</button>
+      </div>
+      <div class="body" style="display:flex;gap:16px;align-items:center;justify-content:center;flex-wrap:wrap">
+        <div id="qrBox"></div>
+        <div>
+          <div class="muted">Escaneie o QR</div>
+          <div><strong id="pixTotal">R$ 0,00</strong></div>
+        </div>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Histórico dialog -->
+  <dialog id="histDlg">
+    <div class="modal">
+      <div class="head">
+        <h2 style="flex:1">Histórico</h2>
+        <button id="histClose" class="btn">Fechar</button>
+      </div>
+      <div class="body">
+        <div class="row" style="gap:8px;flex-wrap:wrap;margin-bottom:8px">
+          <label>Pagamento
+            <select id="fPay" class="select">
+              <option>Todos</option>
+              <option>PIX</option>
+              <option>Cartão de Débito</option>
+              <option>Cartão de Crédito</option>
+            </select>
+          </label>
+          <label>Etiqueta <input id="fLabel" class="input" placeholder="ex.: Verde"></label>
+          <label>De <input id="fFrom" type="date" class="input"></label>
+          <label>Até <input id="fTo" type="date" class="input"></label>
+          <button id="histExport" class="btn">Exportar PDF</button>
+        </div>
+        <table class="table">
+          <thead><tr><th>#</th><th>Comanda</th><th>Etiqueta</th><th>Fechamento</th><th>Pagamento</th><th>Total</th></tr></thead>
+          <tbody id="histBody"></tbody>
+        </table>
+        <div class="row" style="justify-content:flex-end;margin-top:8px">
+          <strong>Total do período: <span id="histTotal">R$ 0,00</span></strong>
+        </div>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Área oculta p/ impressão 80mm -->
+  <div id="printArea"></div>
+
+  <!-- App scripts -->
   <script src="./assets/firebase-config.js"></script>
   <script src="./assets/db.firebase.js"></script>
-  <script src="./assets/home.js"></script>
+  <script src="./assets/pos.js"></script>
 </body>
 </html>

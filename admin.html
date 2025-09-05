@@ -22,14 +22,14 @@
   <main class="wrap">
     <section class="card">
       <h2>Cadastrar / Editar</h2>
-      <div class="grid-2">
+      <div class="grid-2" style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
         <div class="form-row"><label>ID</label><input id="pId" class="input" placeholder="ex.: cerveja_lata_350"></div>
         <div class="form-row"><label>Nome</label><input id="pName" class="input" placeholder="Cerveja Lata 350ml"></div>
         <div class="form-row"><label>Preço</label><input id="pPrice" class="input" inputmode="decimal" placeholder="12,00"></div>
         <div class="form-row"><label>Categoria</label><input id="pCat" class="input" placeholder="Cerveja"></div>
         <div class="form-row" style="grid-column:1/-1"><label>Imagem (URL)</label><input id="pImg" class="input" placeholder="https://..."></div>
       </div>
-      <div class="row" style="margin-top:10px">
+      <div class="row" style="margin-top:10px;flex-wrap:wrap">
         <button class="btn accent" id="addBtn">Salvar/Atualizar</button>
         <button class="btn danger" id="delBtn">Excluir</button>
         <button class="btn" id="exportBtn">Exportar JSON</button>
