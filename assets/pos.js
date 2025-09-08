@@ -1,26 +1,25 @@
-/* ========= Configuração opcional de backend ========= */
-const BACKEND_URL = window.BACKEND_URL || null;
-const TENANT_ID   = window.TENANT_ID   || 'default';
+/* ========= Backend toggle ========= */
+const BACKEND_ON = !!(window.FIREBASE_CONFIG && window.FIREBASE_CONFIG.BACKEND_URL);
 
-/* ========= Configurações fixas ========= */
+/* ========= PIX & payment ========= */
 const PIX_CFG = { KEY:'edab0cd5-ecd4-4050-87f7-fbaf98899713', MERCHANT:'GIGABITEN', CITY:'BRASIL', DESC:'COMANDA' };
 const PAYMENT_METHODS = ['PIX', 'Cartão de Débito', 'Cartão de Crédito'];
 
-/* ========= Utilidades ========= */
+/* ========= Utils ========= */
 const BRL = new Intl.NumberFormat('pt-BR', {style:'currency', currency:'BRL'});
-const $ = s => document.querySelector(s);
-const $$ = s => Array.from(document.querySelectorAll(s));
+const $   = s => document.querySelector(s);
+const $$  = s => Array.from(document.querySelectorAll(s));
 const uid = () => Math.random().toString(36).slice(2,10);
 const sum = arr => arr.reduce((a,b)=>a+b,0);
 
-/* ========= Seed de produtos ========= */
+/* ========= Produtos default (fallback) ========= */
 const DEFAULT_PRODUCTS = [
-  { id:'cerveja_lata_350', name:'Cerveja Lata 350ml', category:'Cerveja', price: 8.00, image:'./assets/placeholder.svg' },
-  { id:'cerveja_garrafa_600', name:'Cerveja Garrafa 600ml', category:'Cerveja', price: 15.00, image:'./assets/placeholder.svg' },
-  { id:'vodka_dose', name:'Vodka (dose)', category:'Drinks', price: 12.00, image:'./assets/placeholder.svg' },
-  { id:'whisky_dose', name:'Whiskey (dose)', category:'Drinks', price: 18.00, image:'./assets/placeholder.svg' },
-  { id:'porcao_fritas', name:'Porção de Fritas', category:'Comida', price: 22.00, image:'./assets/placeholder.svg' },
-  { id:'hamburguer', name:'Hambúrguer', category:'Comida', price: 28.00, image:'./assets/placeholder.svg' }
+  { id:'cerveja_lata_350',   name:'Cerveja Lata 350ml',   category:'Cerveja', price: 8.00,  image:'./assets/placeholder.svg' },
+  { id:'cerveja_garrafa_600',name:'Cerveja Garrafa 600ml',category:'Cerveja', price: 15.00, image:'./assets/placeholder.svg' },
+  { id:'vodka_dose',         name:'Vodka (dose)',         category:'Drinks',  price: 12.00, image:'./assets/placeholder.svg' },
+  { id:'whisky_dose',        name:'Whiskey (dose)',       category:'Drinks',  price: 18.00, image:'./assets/placeholder.svg' },
+  { id:'porcao_fritas',      name:'Porção de Fritas',     category:'Comida',  price: 22.00, image:'./assets/placeholder.svg' },
+  { id:'hamburguer',         name:'Hambúrguer',           category:'Comida',  price: 28.00, image:'./assets/placeholder.svg' }
 ];
 
 /* ========= LocalStorage Keys ========= */
@@ -29,9 +28,7 @@ const LS_KEYS = {
   ACTIVE:   'activeComandaId_v7',
   PRODUCTS: 'products_cache_v4',
   SERVICE:  'service10_v4',
-  BIGTOUCH: 'ui_big_touch_v4',
-  HISTORY:  'history_v3',
-  HSEQ:     'history_seq_v3'
+  BIGTOUCH: 'ui_big_touch_v4'
 };
 
 /* ========= Estado ========= */
@@ -40,7 +37,7 @@ let state = {
   categories: [],
   filterCat: 'Todos',
   query: '',
-  comandas: {},              // tabs abertas sincronizadas com o servidor
+  comandas: {},                 // “tabs” abertas (sessão cross-browser)
   activeComandaId: null,
   service10: JSON.parse(localStorage.getItem(LS_KEYS.SERVICE) || 'false'),
   bigTouch: localStorage.getItem(LS_KEYS.BIGTOUCH) === '1',
@@ -48,6 +45,7 @@ let state = {
   serverOK: false
 };
 
+/* ========= Persistência ========= */
 function loadPersisted(){
   try{
     state.comandas = JSON.parse(localStorage.getItem(LS_KEYS.COMANDAS) || '{}');
@@ -61,14 +59,24 @@ function persist(){
   localStorage.setItem(LS_KEYS.SERVICE, JSON.stringify(state.service10));
   localStorage.setItem(LS_KEYS.BIGTOUCH, state.bigTouch ? '1' : '0');
 }
-function nextHistorySeq(){
-  const n = parseInt(localStorage.getItem(LS_KEYS.HSEQ) || '0', 10) + 1;
-  localStorage.setItem(LS_KEYS.HSEQ, String(n));
-  return n;
-}
 
 /* ========= Produtos ========= */
 async function loadProducts(){
+  try{
+    if(BACKEND_ON && window.API?.listProducts){
+      const data = await API.listProducts();
+      const arr = Array.isArray(data.products) ? data.products : [];
+      if(arr.length){
+        state.products = arr.map(p => ({
+          id: p.id, name: p.name, category: p.category || 'Outros', price: Number(p.price||0), image: p.image || './assets/placeholder.svg'
+        }));
+        state.categories = ['Todos', ...Array.from(new Set(state.products.map(p=>p.category)))];
+        localStorage.setItem(LS_KEYS.PRODUCTS, JSON.stringify(state.products));
+        return;
+      }
+    }
+  }catch(e){ console.warn('Produtos via servidor falharam, usando cache/default.', e); }
+
   try{
     const cached = JSON.parse(localStorage.getItem(LS_KEYS.PRODUCTS) || '[]');
     if(Array.isArray(cached) && cached.length){
@@ -77,15 +85,16 @@ async function loadProducts(){
       return;
     }
   }catch(e){}
+
   state.products = DEFAULT_PRODUCTS;
   state.categories = ['Todos', ...Array.from(new Set(DEFAULT_PRODUCTS.map(p=>p.category)))];
 }
 
+/* ========= Sessão cross-browser (tabs abertas no servidor) ========= */
 function asMapById(list){ const m={}; list.forEach(t=>{ m[t.id]=t; }); return m; }
 
-// Carrega "comandas abertas" do servidor para permitir sessão cross-browser
 async function loadOpenTabsFromServer(){
-  if(!BACKEND_ON) return false;
+  if(!BACKEND_ON || !window.API?.tabsOpen) return false;
   try{
     const res = await API.tabsOpen();
     const tabs = Array.isArray(res.tabs)? res.tabs : [];
@@ -101,9 +110,8 @@ async function loadOpenTabsFromServer(){
   }
 }
 
-// Envia a comanda ativa para o servidor sempre que houver alteração
 async function syncTab(c){
-  if(!BACKEND_ON) return;
+  if(!BACKEND_ON || !window.API?.upsertTab) return;
   try{
     const payload = { ...c, status:'open' };
     await API.upsertTab(payload);
@@ -112,19 +120,21 @@ async function syncTab(c){
   }
 }
 
-/* ========= Comandas ========= */
+/* ========= Comandas locais ========= */
 function createComanda({name,label,color}){
   const id = uid();
-  state.comandas[id] = { id, name, label: label || '', color: color || '#3b82f6', createdAt: Date.now(), payMethod: 'PIX', items:{} };
+  state.comandas[id] = { id, name, label: label || '', color: color || '#3b82f6', createdAt: Date.now(), payMethod: 'PIX', items:{}, status:'open' };
   state.activeComandaId = id;
-  persist(); refreshComandaSelect(); updateSummaryBar();
+  persist(); refreshComandaSelect(); updateSummaryBar(); syncTab(state.comandas[id]);
   return id;
 }
 function getActive(){ return state.activeComandaId ? state.comandas[state.activeComandaId] : null; }
 function setActive(id){ state.activeComandaId = id; persist(); updateSummaryBar(); }
-function deleteActive(){
+
+async function deleteActive(){
   const c = getActive(); if(!c) return;
   if(confirm(`Excluir comanda "${c.name}"?`)){
+    try{ if(BACKEND_ON && window.API?.deleteTab) await API.deleteTab(c.id); }catch(e){}
     delete state.comandas[c.id];
     state.activeComandaId = Object.keys(state.comandas)[0] || null;
     persist(); refreshComandaSelect(); updateSummaryBar();
@@ -133,10 +143,9 @@ function deleteActive(){
 function clearItems(){
   const c = getActive(); if(!c) return;
   c.items = {}; persist(); updateSummaryBar();
-  if(document.getElementById('drawer')?.classList.contains('open')) renderDrawer();
-  syncTab(c); // <<< importante
+  if($('#drawer')?.classList.contains('open')) renderDrawer();
+  syncTab(c);
 }
-
 function calc(c){
   const items = Object.values(c.items||{});
   const subtotal = sum(items.map(i=>i.unit*i.qty));
@@ -149,13 +158,13 @@ async function closeComanda(){
   const c = getActive(); if(!c) return;
   if(!confirm(`Fechar comanda "${c.name}"?`)) return;
 
-  if(BACKEND_ON){
+  if(BACKEND_ON && window.API?.closeComanda){
     try{
       await API.closeComanda({ ...c, service10: state.service10 });
-      await loadOpenTabsFromServer(); // atualiza a sessão depois de fechar
+      await loadOpenTabsFromServer();          // recarrega sessão
       refreshComandaSelect();
       updateSummaryBar();
-      if(document.getElementById('drawer')?.classList.contains('open')) renderDrawer();
+      if($('#drawer')?.classList.contains('open')) renderDrawer();
       alert('Comanda fechada e salva no histórico (Firebase).');
       return;
     }catch(e){
@@ -163,14 +172,12 @@ async function closeComanda(){
     }
   }
 
-  // Fallback local (se backend estiver indisponível)
-  c.items = {};
-  persist(); updateSummaryBar();
-  if(document.getElementById('drawer')?.classList.contains('open')) renderDrawer();
+  // Fallback local (se backend indisponível)
+  c.items = {}; persist(); updateSummaryBar();
+  if($('#drawer')?.classList.contains('open')) renderDrawer();
 }
 
-
-/* ========= UI: Filtros/Cards ========= */
+/* ========= UI: filtros/cards ========= */
 function refreshChips(){
   const cont = $('#chips'); cont.innerHTML = '';
   state.categories.forEach(cat=>{
@@ -193,14 +200,18 @@ function getQty(productId){
 }
 function addToComanda(product, qty=1){
   let c = getActive();
-  if(!c){ c = state.comandas[createComanda({name: state.inlineNew.name || 'Mesa 1', label: state.inlineNew.label || '', color: state.inlineNew.color || '#22c55e'})]; }
+  if(!c){
+    c = state.comandas[createComanda({
+      name:  state.inlineNew.name || 'Mesa 1',
+      label: state.inlineNew.label || '',
+      color: state.inlineNew.color || '#22c55e'
+    })];
+  }
   const current = c.items[product.id] || { id:product.id, name:product.name, unit:product.price, qty:0 };
   current.qty += qty;
   if(current.qty<=0) delete c.items[product.id]; else c.items[product.id] = current;
-  persist(); updateSummaryBar();
-  syncTab(c); // <<< importante
+  persist(); updateSummaryBar(); syncTab(c);
 }
-
 function renderGrid(){
   const grid = $('#grid'); const list = state.products.filter(passFilters);
   grid.innerHTML = '';
@@ -248,7 +259,7 @@ function updateSummaryBar(){
   $('#summaryTotal').textContent = BRL.format(t.total);
 }
 
-/* ========= Drawer ========= */
+/* ========= Drawer (sheet) ========= */
 function renderPayMethods(){
   const cont = $('#payMethods'); cont.innerHTML='';
   const c = getActive(); if(!c) return;
@@ -261,7 +272,7 @@ function renderPayMethods(){
       persist();
       renderPayMethods();
       togglePixButton();
-      syncTab(c); // <<< importante
+      syncTab(c);
     };
     cont.appendChild(b);
   });
@@ -285,15 +296,15 @@ function renderDrawer(){
           <button class="btn" data-inc>+</button>
           <strong>${BRL.format(i.unit*i.qty)}</strong>
         </div>`;
-      line.querySelector('[data-dec]').onclick=()=>{ i.qty=Math.max(0,i.qty-1); if(i.qty===0) delete c.items[i.id]; persist(); renderDrawer(); updateSummaryBar(); };
-      line.querySelector('[data-inc]').onclick=()=>{ i.qty+=1; persist(); renderDrawer(); updateSummaryBar(); };
+      line.querySelector('[data-dec]').onclick=()=>{ i.qty=Math.max(0,i.qty-1); if(i.qty===0) delete c.items[i.id]; persist(); renderDrawer(); updateSummaryBar(); syncTab(c); };
+      line.querySelector('[data-inc]').onclick=()=>{ i.qty+=1; persist(); renderDrawer(); updateSummaryBar(); syncTab(c); };
       cont.appendChild(line);
     });
   }
   const t = calc(c||{items:{}});
   $('#subtotalTxt').textContent = BRL.format(t.subtotal);
-  $('#serviceTxt').textContent = BRL.format(t.service);
-  $('#totalTxt').textContent = BRL.format(t.total);
+  $('#serviceTxt').textContent  = BRL.format(t.service);
+  $('#totalTxt').textContent    = BRL.format(t.total);
   $('#sv10').checked = state.service10;
   renderPayMethods();
   togglePixButton();
@@ -303,7 +314,7 @@ function togglePixButton(){
   $('#pixBtn').style.display = (c.payMethod==='PIX') ? '' : 'none';
 }
 
-/* ========= Compartilhar/PDF ========= */
+/* ========= Share / PDF ========= */
 function buildReceiptText(c){
   const {items, subtotal, service, total} = calc(c);
   const lines = [
@@ -325,11 +336,10 @@ function shareComanda(){
   if(navigator.share){ navigator.share({title:'Comanda', text}).catch(()=>{}); }
   else { navigator.clipboard.writeText(text).then(()=>alert('Resumo copiado!')).catch(()=>alert(text)); }
 }
-
-/* ========= PDF ========= */
 async function generatePDF(){
   const c=getActive(); if(!c) return alert('Nenhuma comanda ativa.');
-  const { jsPDF } = window.jspdf || {}; if(!jsPDF){ alert('jsPDF não carregado'); return; }
+  const { jsPDF } = window.jspdf || {};
+  if(!jsPDF){ alert('Biblioteca de PDF (jsPDF) não carregada. Posso habilitar no HTML.'); return; }
   const doc = new jsPDF();
   const t = calc(c);
   let y=14;
@@ -363,7 +373,7 @@ async function generatePDF(){
   doc.save(`comanda-${c.name.toLowerCase().replace(/\s+/g,'-')}.pdf`);
 }
 
-/* ========= PIX ========= */
+/* ========= PIX helpers ========= */
 function sanitizeASCII(s=''){ return (s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^\x20-\x7E]/g,''); }
 function emvField(id, value){ const v=String(value); const len=String(v.length).padStart(2,'0'); return `${id}${len}${v}`; }
 function crc16(payload){
@@ -375,7 +385,7 @@ function crc16(payload){
   return crc.toString(16).toUpperCase().padStart(4,'0');
 }
 function buildPixPayload(amount, txid='COMANDA'){
-  const GUI = emvField('00','br.gov.bcb.pix');
+  const GUI = emvField('00','BR.GOV.BCB.PIX');
   const KEY = emvField('01', PIX_CFG.KEY);
   const DESC = PIX_CFG.DESC ? emvField('02', PIX_CFG.DESC.substring(0,25)) : '';
   const MAI = emvField('26', GUI + KEY + DESC);
@@ -392,83 +402,16 @@ function buildPixPayload(amount, txid='COMANDA'){
   const crc = crc16(noCRC);
   return noCRC + crc;
 }
-function showPixModal(total){
-  const c=getActive(); if(!c) return;
-  const payload = buildPixPayload(total, c.id);
-  if(!payload){ alert('Configuração PIX inválida.'); return; }
-  const cont = $('#pixQR'); cont.innerHTML='';
-  new QRCode(cont, {text: payload, width:220, height:220, correctLevel: QRCode.CorrectLevel.M});
-  $('#pixPayload').value = payload;
-  $('#pixModal').classList.add('open');
-}
-function copyPix(){
-  const t=$('#pixPayload'); t.select(); document.execCommand('copy'); alert('Código PIX copiado!');
-}
 function makeQRDataURL(text, size=200){
   return new Promise(resolve=>{
-    const tgt = $('#qrHidden'); tgt.innerHTML='';
+    const tgt = $('#qrHidden'); if(!tgt){ resolve(null); return; }
+    tgt.innerHTML='';
     new QRCode(tgt, {text, width:size, height:size, correctLevel: QRCode.CorrectLevel.M});
     setTimeout(()=>{
       const canvas = tgt.querySelector('canvas');
       resolve(canvas ? canvas.toDataURL('image/png') : null);
     }, 120);
   });
-}
-
-/* ========= Visão geral ========= */
-function renderOverview(){
-  const board = $('#board'); board.innerHTML='';
-  const ids = Object.keys(state.comandas);
-  if(ids.length===0){ board.innerHTML='<div class="muted">Nenhuma comanda.</div>'; return; }
-  ids.forEach(id=>{
-    const c = state.comandas[id]; const t = calc(c);
-    const div = document.createElement('div'); div.className='tile';
-    div.innerHTML = `
-      <div class="flex">
-        <div><span class="dot" style="background:${c.color};vertical-align:middle"></span> <strong>${c.name}</strong></div>
-        <div class="tag">${c.label||'—'}</div>
-      </div>
-      <div class="mini" style="margin-top:4px">${t.count} ${t.count===1?'item':'itens'} • ${BRL.format(t.total)} • ${c.payMethod}</div>
-      <div class="row" style="margin-top:8px">
-        <button class="btn" data-open>Abrir</button>
-        <button class="btn" data-clear>Limpar</button>
-        <button class="btn danger" data-del>Excluir</button>
-      </div>`;
-    div.querySelector('[data-open]').onclick=()=>{ setActive(id); $('#overviewModal').classList.remove('open'); updateSummaryBar(); };
-    div.querySelector('[data-clear]').onclick=()=>{ state.comandas[id].items={}; persist(); renderOverview(); updateSummaryBar(); };
-    div.querySelector('[data-del]').onclick=()=>{ if(confirm(`Excluir ${c.name}?`)){ delete state.comandas[id]; persist(); renderOverview(); refreshComandaSelect(); updateSummaryBar(); } };
-    board.appendChild(div);
-  });
-}
-
-/* ========= Histórico ========= */
-function renderHistory(){
-  const cont = $('#histList'); if(!cont) return;
-  const openIds = Object.keys(state.comandas);
-  const openCards = openIds.map(id=>{
-    const c = state.comandas[id]; const t = calc(c);
-    return `
-      <div class="hist-item">
-        <div class="hist-head">
-          <div><span class="dot" style="background:${c.color}"></span> <strong>${c.name}</strong> <span class="tag">${c.label||'—'}</span></div>
-          <div class="hist-money">${BRL.format(t.total)}</div>
-        </div>
-        <div class="hist-meta">ABERTA • ${new Date(c.createdAt||Date.now()).toLocaleString('pt-BR')} • ${t.count} itens • ${c.payMethod}</div>
-      </div>`;
-  }).join('') || `<div class="muted">Nenhuma comanda aberta.</div>`;
-
-  const closedCards = (state.history||[]).map(r=>{
-    return `
-      <div class="hist-item">
-        <div class="hist-head">
-          <div><span class="dot" style="background:${r.color||'#3b82f6'}"></span> <strong>${r.name}</strong> <span class="tag">${r.label||'—'}</span></div>
-          <div class="hist-money">${BRL.format(r.total||0)}</div>
-        </div>
-        <div class="hist-meta">#${String(r.number).padStart(6,'0')} • FECHADA • ${new Date(r.closedAt).toLocaleString('pt-BR')} • ${r.items?.reduce((a,b)=>a+(b.qty||0),0)||0} itens • ${r.payMethod}</div>
-      </div>`;
-  }).join('') || `<div class="muted">Sem registros de histórico ainda.</div>`;
-
-  cont.innerHTML = `<h4>Abertas agora</h4>${openCards}<h4 style="margin-top:8px">Fechadas (Histórico)</h4>${closedCards}`;
 }
 
 /* ========= Impressão térmica 80mm ========= */
@@ -519,7 +462,7 @@ async function printThermal80(){
   w.document.write(`<!doctype html><html><head>
     <meta charset="utf-8"><title>Imprimir Cupom</title>
     <link rel="stylesheet" href="./assets/print.css">
-    <style>body{background:#fff}</style></head><body>${html}<div id="qrHidden"></div></body></html>`);
+    <style>body{background:#fff}</style></head><body>${html}</body></html>`);
   w.document.close();
   const doPrint = () => { try{ w.focus(); w.print(); }catch(e){} setTimeout(()=>{ try{ w.close(); }catch(e){} }, 200); };
   const imgs = w.document.images;
@@ -530,9 +473,61 @@ async function printThermal80(){
   } else { doPrint(); }
 }
 
+/* ========= Histórico (consulta no servidor) ========= */
+async function renderHistory(){
+  const cont = $('#histList'); if(!cont) return;
+  cont.innerHTML = '<div class="muted">Carregando...</div>';
+  try{
+    if(BACKEND_ON && window.API?.history){
+      const data = await API.history();
+      const rows = (data.history||[]);
+      if(rows.length===0){ cont.innerHTML = '<div class="muted">Sem registros de histórico.</div>'; return; }
+      cont.innerHTML = rows.map(r=>`
+        <div class="hist-item">
+          <div class="hist-head">
+            <div><span class="dot" style="background:${r.color||'#3b82f6'}"></span> <strong>${r.name||'—'}</strong> <span class="tag">${r.label||'—'}</span></div>
+            <div class="hist-money">${BRL.format(r.total||0)}</div>
+          </div>
+          <div class="hist-meta">#${String(r.number).padStart(6,'0')} • ${new Date(r.closedAt).toLocaleString('pt-BR')} • ${r.items?.reduce((a,b)=>a+(b.qty||0),0)||0} itens • ${r.payMethod||'PIX'}</div>
+        </div>`).join('');
+      return;
+    }
+    cont.innerHTML = '<div class="muted">Servidor indisponível. Sem histórico.</div>';
+  }catch(e){
+    cont.innerHTML = '<div class="muted">Erro ao carregar histórico.</div>';
+  }
+}
+
+/* ========= Visão geral ========= */
+function renderOverview(){
+  const board = $('#board'); board.innerHTML='';
+  const ids = Object.keys(state.comandas);
+  if(ids.length===0){ board.innerHTML='<div class="muted">Nenhuma comanda.</div>'; return; }
+  ids.forEach(id=>{
+    const c = state.comandas[id]; const t = calc(c);
+    const div = document.createElement('div'); div.className='tile';
+    div.innerHTML = `
+      <div class="flex">
+        <div><span class="dot" style="background:${c.color};vertical-align:middle"></span> <strong>${c.name}</strong></div>
+        <div class="tag">${c.label||'—'}</div>
+      </div>
+      <div class="mini" style="margin-top:4px">${t.count} ${t.count===1?'item':'itens'} • ${BRL.format(t.total)} • ${c.payMethod}</div>
+      <div class="row" style="margin-top:8px">
+        <button class="btn" data-open>Abrir</button>
+        <button class="btn" data-clear>Limpar</button>
+        <button class="btn danger" data-del>Excluir</button>
+      </div>`;
+    div.querySelector('[data-open]').onclick=()=>{ setActive(id); $('#overviewModal').classList.remove('open'); updateSummaryBar(); };
+    div.querySelector('[data-clear]').onclick=()=>{ state.comandas[id].items={}; persist(); renderOverview(); updateSummaryBar(); syncTab(state.comandas[id]); };
+    div.querySelector('[data-del]').onclick=async()=>{ if(confirm(`Excluir ${c.name}?`)){ await deleteActive(); renderOverview(); refreshComandaSelect(); updateSummaryBar(); } };
+    board.appendChild(div);
+  });
+}
+
 /* ========= Controles ========= */
 function refreshComandaSelect(){
-  const sel = $('#comandaSelect'); sel.innerHTML='';
+  const sel = $('#comandaSelect'); if(!sel) return;
+  sel.innerHTML='';
   const ids = Object.keys(state.comandas);
   if(ids.length===0){ sel.innerHTML='<option value="">(sem comanda)</option>'; return; }
   ids.forEach(id=>{
@@ -543,11 +538,10 @@ function refreshComandaSelect(){
     sel.appendChild(opt);
   });
 }
-
-/* Inline "Nova comanda" */
 function initInlineNew(){
   const pal = ['#3b82f6','#22c55e','#ef4444','#f59e0b','#8b5cf6','#06b6d4','#e11d48','#10b981','#a3e635','#f97316'];
-  const sw = $('#ncColors'); sw.innerHTML='';
+  const sw = $('#ncColors'); if(!sw) return;
+  sw.innerHTML='';
   pal.forEach((c,i)=>{
     const el=document.createElement('div'); el.className='swatch'; el.style.background=c;
     if(i===0){ el.classList.add('active'); state.inlineNew.color = c; }
@@ -559,101 +553,107 @@ function initInlineNew(){
     sw.appendChild(el);
   });
   const nameI=$('#ncName'); const labelI=$('#ncLabel'); const addB=$('#ncAdd');
-  nameI.value = state.inlineNew.name; labelI.value = state.inlineNew.label;
-  nameI.oninput = e=> state.inlineNew.name = e.target.value;
-  labelI.oninput = e=> state.inlineNew.label = e.target.value;
-  addB.onclick = ()=>{
-    const name = state.inlineNew.name?.trim() || `Mesa ${Object.keys(state.comandas).length+1}`;
-    const label = state.inlineNew.label?.trim() || '';
-    const color = state.inlineNew.color || '#3b82f6';
-    const id = createComanda({name,label,color});
+  if(nameI){ nameI.value = state.inlineNew.name; nameI.oninput = e=> state.inlineNew.name = e.target.value; }
+  if(labelI){ labelI.value = state.inlineNew.label; labelI.oninput = e=> state.inlineNew.label = e.target.value; }
+  if(addB){
+    addB.onclick = ()=>{
+      const name = state.inlineNew.name?.trim() || `Mesa ${Object.keys(state.comandas).length+1}`;
+      const label = state.inlineNew.label?.trim() || '';
+      const color = state.inlineNew.color || '#3b82f6';
+      const id = createComanda({name,label,color});
+      refreshComandaSelect();
+      const sel = $('#comandaSelect'); if(sel) sel.value = id;
+    };
+  }
+}
+
+/* ========= Health + polling ========= */
+async function refreshHealth(){
+  const el = $('#dbStatus');
+  if(!el){ return; }
+  if(!BACKEND_ON){ el.textContent = 'DB: OFF'; el.style.borderColor = '#ef4444'; return; }
+  try{
+    const h = await API.health();
+    const ok = !!(h && h.ok);
+    el.textContent = ok ? `DB: OK (${h.tenant||'—'})` : 'DB: OFF';
+    el.style.borderColor = ok ? '#22c55e' : '#ef4444';
+    state.serverOK = ok;
+  }catch(e){
+    el.textContent = 'DB: OFF';
+    el.style.borderColor = '#ef4444';
+  }
+}
+function startPolling(){
+  if(!BACKEND_ON) return;
+  setInterval(async ()=>{
+    await loadOpenTabsFromServer(); // traz alterações feitas em outro navegador
     refreshComandaSelect();
-    $('#comandaSelect').value = id;
-  };
+    updateSummaryBar();
+  }, 12000);
 }
 
-function bindEvents(){
-  $('#bigTouchBtn').onclick = ()=>{ state.bigTouch = !state.bigTouch; persist(); applyBigTouch(); };
+/* ========= Boot ========= */
+async function boot(){
+  loadPersisted();
+  await refreshHealth();
+  await loadProducts();
 
-  $('#deleteComandaBtn').onclick = deleteActive;
-  $('#comandaSelect').onchange = e=> setActive(e.target.value);
+  // tenta carregar sessão do servidor
+  const loaded = await loadOpenTabsFromServer();
+  if(!loaded && !state.activeComandaId){
+    createComanda({name:'Mesa 1', color:'#22c55e'}); // fallback local
+  }
 
-  $('#search').oninput = e=>{ state.query=e.target.value; renderGrid(); };
-  $('#clearSearch').onclick = ()=>{ $('#search').value=''; state.query=''; renderGrid(); };
-
-  $('#openDrawer').onclick = ()=>{ $('#drawer').classList.add('open'); renderDrawer(); };
-  $('#closeDrawer').onclick = ()=>$('#drawer').classList.remove('open');
-  $('#colorBtn').onclick = ()=>alert('Para trocar a cor, crie uma nova comanda com a paleta acima.');
-
-  $('#sv10').onchange = e=>{ state.service10 = e.target.checked; persist(); renderDrawer(); updateSummaryBar(); };
-
-  $('#shareBtn').onclick = shareComanda;
-  $('#pdfBtn').onclick = generatePDF;
-  $('#print80Btn').onclick = printThermal80;
-  $('#clearItemsBtn').onclick = ()=>{ if(confirm('Limpar todos os itens?')) clearItems(); };
-  $('#closeComandaBtn').onclick = closeComanda;
-
-  $('#pixBtn').onclick = ()=>{
-    const c=getActive(); if(!c) return;
-    const t=calc(c); showPixModal(t.total);
-  };
-  $('#closePixBtn').onclick = ()=>$('#pixModal').classList.remove('open');
-  $('#copyPixBtn').onclick = copyPix;
-
-  $('#overviewBtn').onclick = ()=>{ renderOverview(); $('#overviewModal').classList.add('open'); };
-  $('#closeOverviewBtn').onclick = ()=>$('#overviewModal').classList.remove('open');
-
-  $('#historyBtn').onclick = ()=>{ renderHistory(); $('#historyModal').classList.add('open'); };
-  $('#closeHistoryBtn').onclick = ()=>$('#historyModal').classList.remove('open');
-
-  $$('.modal').forEach(m=>{ m.addEventListener('click', (ev)=>{ if(ev.target===m) m.classList.remove('open'); }); });
-
+  // UI inicial
+  applyBigTouch();
+  refreshChips();
+  refreshComandaSelect();
+  renderGrid();
+  updateSummaryBar();
   initInlineNew();
-}
 
-/* Modo toque grande */
+  // Bind de ações globais
+  $('#bigTouchBtn')?.addEventListener('click', ()=>{ state.bigTouch = !state.bigTouch; persist(); applyBigTouch(); });
+  $('#deleteComandaBtn')?.addEventListener('click', deleteActive);
+  $('#comandaSelect')?.addEventListener('change', e=> setActive(e.target.value));
+  $('#search')?.addEventListener('input', e=>{ state.query=e.target.value; renderGrid(); });
+  $('#clearSearch')?.addEventListener('click', ()=>{ const s=$('#search'); if(s){ s.value=''; } state.query=''; renderGrid(); });
+  $('#openDrawer')?.addEventListener('click', ()=>{ $('#drawer')?.classList.add('open'); renderDrawer(); });
+  $('#closeDrawer')?.addEventListener('click', ()=>$('#drawer')?.classList.remove('open'));
+  $('#colorBtn')?.addEventListener('click', ()=>alert('Para trocar a cor, crie uma nova comanda com a paleta acima.'));
+  $('#sv10')?.addEventListener('change', e=>{ state.service10 = e.target.checked; persist(); renderDrawer(); updateSummaryBar(); });
+
+  $('#shareBtn')?.addEventListener('click', shareComanda);
+  $('#pdfBtn')?.addEventListener('click', generatePDF);
+  $('#print80Btn')?.addEventListener('click', printThermal80);
+  $('#clearItemsBtn')?.addEventListener('click', ()=>{ if(confirm('Limpar todos os itens?')) clearItems(); });
+  $('#closeComandaBtn')?.addEventListener('click', closeComanda);
+
+  $('#pixBtn')?.addEventListener('click', async ()=>{
+    const c=getActive(); if(!c) return; const t=calc(c);
+    const payload = buildPixPayload(t.total, c.id);
+    const cont = $('#pixQR'); if(cont){ cont.innerHTML=''; new QRCode(cont, {text: payload, width:220, height:220, correctLevel: QRCode.CorrectLevel.M}); }
+    const input = $('#pixPayload'); if(input){ input.value = payload; }
+    $('#pixModal')?.classList.add('open');
+  });
+  $('#closePixBtn')?.addEventListener('click', ()=>$('#pixModal')?.classList.remove('open'));
+  $('#copyPixBtn')?.addEventListener('click', ()=>{ const t=$('#pixPayload'); if(t){ t.select(); document.execCommand('copy'); alert('Código PIX copiado!'); } });
+
+  $('#overviewBtn')?.addEventListener('click', ()=>{ renderOverview(); $('#overviewModal')?.classList.add('open'); });
+  $('#closeOverviewBtn')?.addEventListener('click', ()=>$('#overviewModal')?.classList.remove('open'));
+
+  $('#historyBtn')?.addEventListener('click', ()=>{ renderHistory(); $('#historyModal')?.classList.add('open'); });
+  $('#closeHistoryBtn')?.addEventListener('click', ()=>$('#historyModal')?.classList.remove('open'));
+
+  // Fechar modais ao tocar no backdrop
+  $$('.modal').forEach(m=> m.addEventListener('click', (ev)=>{ if(ev.target===m) m.classList.remove('open'); }));
+
+  // polling para sessão cross-browser
+  startPolling();
+}
 function applyBigTouch(){
   document.body.classList.toggle('big-touch', !!state.bigTouch);
   const b = $('#bigTouchBtn');
   if(b){ b.textContent = state.bigTouch ? 'Toque grande: ON' : 'Toque grande'; b.setAttribute('aria-pressed', state.bigTouch?'true':'false'); }
-}
-
-function startPolling(){
-  if(!BACKEND_ON) return;
-  setInterval(async ()=>{
-    await loadOpenTabsFromServer(); // puxa alterações feitas em outro browser
-    refreshComandaSelect();
-    updateSummaryBar();
-  }, 12000); // 12s estável; ajuste como preferir
-}
-
-
-/* Boot */
-async function boot(){
-loadPersisted();
-await refreshHealth();         // opcional: mostra DB: OK/OFF
-await loadProducts();
-
-const loaded = await loadOpenTabsFromServer(); // tenta trazer sessão do servidor
-if(!loaded && !state.activeComandaId){
-  createComanda({name:'Mesa 1', color:'#22c55e'}); // fallback local
-}
-
-// ... (seus binds existentes)
-
-document.getElementById('historyBtn').onclick = ()=>{
-  renderHistory();
-  document.getElementById('historyModal').classList.add('open');
-};
-document.getElementById('closeHistoryBtn').onclick = ()=>document.getElementById('historyModal').classList.remove('open');
-
-// Feche modais clicando no backdrop (se já não tiver)
-document.querySelectorAll('.modal').forEach(m=>{
-  m.addEventListener('click', (ev)=>{ if(ev.target===m) m.classList.remove('open'); });
-});
-
-// começa o polling cross-browser
-startPolling();
-
 }
 document.addEventListener('DOMContentLoaded', boot);
