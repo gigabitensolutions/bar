@@ -25,11 +25,11 @@ const DEFAULT_PRODUCTS = [
 
 /* ========= LocalStorage Keys ========= */
 const LS_KEYS = {
-  COMANDAS: 'comandas_v5',
-  ACTIVE:   'activeComandaId_v5',
-  PRODUCTS: 'products_cache_v2',
-  SERVICE:  'service10_v2',
-  BIGTOUCH: 'ui_big_touch_v2',
+  COMANDAS: 'comandas_v7',
+  ACTIVE:   'activeComandaId_v7',
+  PRODUCTS: 'products_cache_v4',
+  SERVICE:  'service10_v4',
+  BIGTOUCH: 'ui_big_touch_v4',
   HISTORY:  'history_v3',
   HSEQ:     'history_seq_v3'
 };
@@ -40,21 +40,19 @@ let state = {
   categories: [],
   filterCat: 'Todos',
   query: '',
-  comandas: {},
+  comandas: {},              // tabs abertas sincronizadas com o servidor
   activeComandaId: null,
   service10: JSON.parse(localStorage.getItem(LS_KEYS.SERVICE) || 'false'),
   bigTouch: localStorage.getItem(LS_KEYS.BIGTOUCH) === '1',
   inlineNew: { name:'Mesa 1', label:'', color:'#3b82f6' },
-  history: []
+  serverOK: false
 };
 
-/* ========= Persistência ========= */
 function loadPersisted(){
   try{
     state.comandas = JSON.parse(localStorage.getItem(LS_KEYS.COMANDAS) || '{}');
     const a = localStorage.getItem(LS_KEYS.ACTIVE);
     state.activeComandaId = (a && state.comandas[a]) ? a : null;
-    state.history = JSON.parse(localStorage.getItem(LS_KEYS.HISTORY) || '[]');
   }catch(e){}
 }
 function persist(){
@@ -62,7 +60,6 @@ function persist(){
   localStorage.setItem(LS_KEYS.ACTIVE, state.activeComandaId || '');
   localStorage.setItem(LS_KEYS.SERVICE, JSON.stringify(state.service10));
   localStorage.setItem(LS_KEYS.BIGTOUCH, state.bigTouch ? '1' : '0');
-  localStorage.setItem(LS_KEYS.HISTORY, JSON.stringify(state.history));
 }
 function nextHistorySeq(){
   const n = parseInt(localStorage.getItem(LS_KEYS.HSEQ) || '0', 10) + 1;
@@ -82,6 +79,37 @@ async function loadProducts(){
   }catch(e){}
   state.products = DEFAULT_PRODUCTS;
   state.categories = ['Todos', ...Array.from(new Set(DEFAULT_PRODUCTS.map(p=>p.category)))];
+}
+
+function asMapById(list){ const m={}; list.forEach(t=>{ m[t.id]=t; }); return m; }
+
+// Carrega "comandas abertas" do servidor para permitir sessão cross-browser
+async function loadOpenTabsFromServer(){
+  if(!BACKEND_ON) return false;
+  try{
+    const res = await API.tabsOpen();
+    const tabs = Array.isArray(res.tabs)? res.tabs : [];
+    tabs.forEach(t=>{ t.items = t.items || {}; t.status = t.status || 'open'; t.payMethod = t.payMethod || 'PIX'; });
+    state.comandas = asMapById(tabs);
+    const existing = localStorage.getItem(LS_KEYS.ACTIVE);
+    state.activeComandaId = (existing && state.comandas[existing]) ? existing : (tabs[0]?.id || null);
+    persist();
+    return true;
+  }catch(e){
+    console.warn('Falha ao carregar tabs do servidor', e);
+    return false;
+  }
+}
+
+// Envia a comanda ativa para o servidor sempre que houver alteração
+async function syncTab(c){
+  if(!BACKEND_ON) return;
+  try{
+    const payload = { ...c, status:'open' };
+    await API.upsertTab(payload);
+  }catch(e){
+    console.warn('Falha ao sincronizar tab', e);
+  }
 }
 
 /* ========= Comandas ========= */
@@ -104,8 +132,11 @@ function deleteActive(){
 }
 function clearItems(){
   const c = getActive(); if(!c) return;
-  c.items = {}; persist(); updateSummaryBar(); if($('#drawer').classList.contains('open')) renderDrawer();
+  c.items = {}; persist(); updateSummaryBar();
+  if(document.getElementById('drawer')?.classList.contains('open')) renderDrawer();
+  syncTab(c); // <<< importante
 }
+
 function calc(c){
   const items = Object.values(c.items||{});
   const subtotal = sum(items.map(i=>i.unit*i.qty));
@@ -118,41 +149,26 @@ async function closeComanda(){
   const c = getActive(); if(!c) return;
   if(!confirm(`Fechar comanda "${c.name}"?`)) return;
 
-  const t = calc(c);
-  const record = {
-    number: nextHistorySeq(),
-    comandaId: c.id, name: c.name, label: c.label || '',
-    color: c.color || '#3b82f6',
-    createdAt: c.createdAt || Date.now(),
-    closedAt: Date.now(),
-    payMethod: c.payMethod || 'PIX',
-    service10: !!state.service10, reversed:false, reversedAt:null,
-    items: Object.values(c.items||{}).map(i=>({ id:i.id, name:i.name, unit:Number(i.unit||0), qty:Number(i.qty||0), total:Number(i.unit||0)*Number(i.qty||0) })),
-    subtotal: t.subtotal, service: t.service, total: t.total
-  };
-
-  if(BACKEND_URL){
+  if(BACKEND_ON){
     try{
-      const resp = await fetch(`${BACKEND_URL}/close-comanda?tenant=${encodeURIComponent(TENANT_ID)}`, {
-        method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ ...c, service10: state.service10 })
-      });
-      if(resp.ok){
-        const data = await resp.json();
-        if(data && data.record){
-          record.number = data.record.number;
-          record.closedAt = data.record.closedAt || record.closedAt;
-        }
-      }
-    }catch(e){ /* segue local */ }
+      await API.closeComanda({ ...c, service10: state.service10 });
+      await loadOpenTabsFromServer(); // atualiza a sessão depois de fechar
+      refreshComandaSelect();
+      updateSummaryBar();
+      if(document.getElementById('drawer')?.classList.contains('open')) renderDrawer();
+      alert('Comanda fechada e salva no histórico (Firebase).');
+      return;
+    }catch(e){
+      alert('Falha ao fechar no servidor: '+e.message);
+    }
   }
 
-  state.history = [record, ...state.history].slice(0, 2000);
+  // Fallback local (se backend estiver indisponível)
   c.items = {};
-  persist();
-  updateSummaryBar();
-  if($('#drawer').classList.contains('open')) renderDrawer();
-  alert('Comanda fechada e registrada no histórico.');
+  persist(); updateSummaryBar();
+  if(document.getElementById('drawer')?.classList.contains('open')) renderDrawer();
 }
+
 
 /* ========= UI: Filtros/Cards ========= */
 function refreshChips(){
@@ -182,7 +198,9 @@ function addToComanda(product, qty=1){
   current.qty += qty;
   if(current.qty<=0) delete c.items[product.id]; else c.items[product.id] = current;
   persist(); updateSummaryBar();
+  syncTab(c); // <<< importante
 }
+
 function renderGrid(){
   const grid = $('#grid'); const list = state.products.filter(passFilters);
   grid.innerHTML = '';
@@ -243,6 +261,7 @@ function renderPayMethods(){
       persist();
       renderPayMethods();
       togglePixButton();
+      syncTab(c); // <<< importante
     };
     cont.appendChild(b);
   });
@@ -599,12 +618,42 @@ function applyBigTouch(){
   if(b){ b.textContent = state.bigTouch ? 'Toque grande: ON' : 'Toque grande'; b.setAttribute('aria-pressed', state.bigTouch?'true':'false'); }
 }
 
+function startPolling(){
+  if(!BACKEND_ON) return;
+  setInterval(async ()=>{
+    await loadOpenTabsFromServer(); // puxa alterações feitas em outro browser
+    refreshComandaSelect();
+    updateSummaryBar();
+  }, 12000); // 12s estável; ajuste como preferir
+}
+
+
 /* Boot */
 async function boot(){
-  loadPersisted();
-  await loadProducts();
-  applyBigTouch();
-  refreshChips(); refreshComandaSelect(); bindEvents(); renderGrid(); updateSummaryBar();
-  if(!getActive()){ createComanda({name:'Mesa 1',color:'#22c55e'}); refreshComandaSelect(); }
+loadPersisted();
+await refreshHealth();         // opcional: mostra DB: OK/OFF
+await loadProducts();
+
+const loaded = await loadOpenTabsFromServer(); // tenta trazer sessão do servidor
+if(!loaded && !state.activeComandaId){
+  createComanda({name:'Mesa 1', color:'#22c55e'}); // fallback local
+}
+
+// ... (seus binds existentes)
+
+document.getElementById('historyBtn').onclick = ()=>{
+  renderHistory();
+  document.getElementById('historyModal').classList.add('open');
+};
+document.getElementById('closeHistoryBtn').onclick = ()=>document.getElementById('historyModal').classList.remove('open');
+
+// Feche modais clicando no backdrop (se já não tiver)
+document.querySelectorAll('.modal').forEach(m=>{
+  m.addEventListener('click', (ev)=>{ if(ev.target===m) m.classList.remove('open'); });
+});
+
+// começa o polling cross-browser
+startPolling();
+
 }
 document.addEventListener('DOMContentLoaded', boot);

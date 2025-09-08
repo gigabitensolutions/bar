@@ -6,10 +6,21 @@
   <meta name="theme-color" content="#0f172a"/>
   <title>Comandas — GitHub Pages</title>
   <link rel="stylesheet" href="./assets/app.css"/>
+  <script src="./assets/firebase-config.js"></script>
+  <script src="./assets/db.firebase.js"></script>
+
   <link rel="stylesheet" href="./assets/print.css" media="print"/>
   <!-- libs -->
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<div class="right row">
+  <span id="dbStatus" class="tag">DB: —</span>
+  <button id="bigTouchBtn" class="btn ghost" aria-pressed="false">Toque grande</button>
+  <button id="overviewBtn" class="btn">Visão geral</button>
+  <button id="historyBtn" class="btn">Histórico</button>
+  <select id="comandaSelect" class="select" style="min-width:160px"></select>
+  <button id="deleteComandaBtn" class="btn danger">Excluir</button>
+</div>
 </head>
 <body>
   <header>
