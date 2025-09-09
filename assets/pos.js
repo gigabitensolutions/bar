@@ -42,7 +42,8 @@ let state = {
   service10: JSON.parse(localStorage.getItem(LS_KEYS.SERVICE) || 'false'),
   bigTouch: localStorage.getItem(LS_KEYS.BIGTOUCH) === '1',
   inlineNew: { name:'Mesa 1', label:'', color:'#3b82f6' },
-  serverOK: false
+  serverOK: false,
+  historyCache: []              // cache do /history para exportar PDF
 };
 
 /* ========= Persistência ========= */
@@ -120,7 +121,7 @@ async function syncTab(c){
   }
 }
 
-/* ========= Comandas locais ========= */
+/* ========= Comandas ========= */
 function createComanda({name,label,color}){
   const id = uid();
   state.comandas[id] = { id, name, label: label || '', color: color || '#3b82f6', createdAt: Date.now(), payMethod: 'PIX', items:{}, status:'open' };
@@ -314,7 +315,7 @@ function togglePixButton(){
   $('#pixBtn').style.display = (c.payMethod==='PIX') ? '' : 'none';
 }
 
-/* ========= Share / PDF ========= */
+/* ========= Share / PDF da comanda ========= */
 function buildReceiptText(c){
   const {items, subtotal, service, total} = calc(c);
   const lines = [
@@ -339,7 +340,7 @@ function shareComanda(){
 async function generatePDF(){
   const c=getActive(); if(!c) return alert('Nenhuma comanda ativa.');
   const { jsPDF } = window.jspdf || {};
-  if(!jsPDF){ alert('Biblioteca de PDF (jsPDF) não carregada. Posso habilitar no HTML.'); return; }
+  if(!jsPDF){ alert('Biblioteca de PDF (jsPDF) não carregada.'); return; }
   const doc = new jsPDF();
   const t = calc(c);
   let y=14;
@@ -371,6 +372,70 @@ async function generatePDF(){
     }
   }
   doc.save(`comanda-${c.name.toLowerCase().replace(/\s+/g,'-')}.pdf`);
+}
+
+/* ========= Exportar PDF do Histórico ========= */
+async function exportHistoryPDF(){
+  const rows = state.historyCache || [];
+  if(!rows.length){ alert('Sem registros de histórico para exportar.'); return; }
+
+  const { jsPDF } = window.jspdf || {};
+  if(!jsPDF){ alert('Biblioteca jsPDF não carregada.'); return; }
+
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  let y = 14;
+
+  doc.setFontSize(14);
+  doc.text('Relatório — Histórico de Comandas', 14, y); y += 6;
+  doc.setFontSize(10);
+  const genAt = new Date().toLocaleString('pt-BR');
+  doc.text(`Gerado: ${genAt} • Registros: ${rows.length}`, 14, y); y += 6;
+
+  let gTotal = 0, gItems = 0;
+
+  rows.forEach(r=>{
+    const dt = r.closedAt ? new Date(r.closedAt).toLocaleString('pt-BR') : '—';
+    const header = `#${String(r.number).padStart(6,'0')} • ${r.name||'—'}${r.label?` [${r.label}]`:''} • ${dt} • ${r.payMethod||'—'}`;
+
+    if(y > 270){ doc.addPage(); y = 14; }
+    doc.setFont(undefined, 'bold');
+    doc.text(header, 14, y);
+    doc.setFont(undefined, 'normal');
+    y += 5;
+
+    const items = Array.isArray(r.items) ? r.items : [];
+    items.forEach(it=>{
+      const qty = Number(it.qty||0);
+      const unit = Number(it.unit || it.price || 0);
+      const tot  = Number(it.total ?? (unit * qty));
+      const left = `- ${qty} × ${it.name||''}`;
+      const right= BRL.format(tot);
+
+      if(y > 280){ doc.addPage(); y = 14; }
+      doc.text(left, 14, y);
+      doc.text(right, 196, y, { align: 'right' });
+      y += 5;
+    });
+
+    const subtotal = Number(r.subtotal||0), service = Number(r.service||0), total = Number(r.total||0);
+    if(y > 280){ doc.addPage(); y = 14; }
+    doc.text(`Subtotal: ${BRL.format(subtotal)} • Serviço: ${BRL.format(service)} • Total: ${BRL.format(total)}`, 14, y);
+    y += 6;
+
+    gTotal += total;
+    gItems += items.reduce((a,b)=> a + Number(b.qty||0), 0);
+
+    if(y > 286){ doc.addPage(); y = 14; }
+    doc.line(14, y, 196, y); y += 4;
+  });
+
+  if(y > 270){ doc.addPage(); y = 14; }
+  doc.setFont(undefined,'bold');
+  doc.text(`Total de itens: ${gItems}`, 14, y); y += 6;
+  doc.text(`Total arrecadado: ${BRL.format(gTotal)}`, 14, y); y += 6;
+  doc.setFont(undefined,'normal');
+
+  doc.save('historico-comandas.pdf');
 }
 
 /* ========= PIX helpers ========= */
@@ -476,12 +541,21 @@ async function printThermal80(){
 /* ========= Histórico (consulta no servidor) ========= */
 async function renderHistory(){
   const cont = $('#histList'); if(!cont) return;
+  const btn = $('#histExportPdfBtn');
   cont.innerHTML = '<div class="muted">Carregando...</div>';
+  if(btn) btn.disabled = true;
+
   try{
     if(BACKEND_ON && window.API?.history){
       const data = await API.history();
       const rows = (data.history||[]);
-      if(rows.length===0){ cont.innerHTML = '<div class="muted">Sem registros de histórico.</div>'; return; }
+      state.historyCache = rows;                 // guarda p/ exportar
+      if(btn) btn.disabled = rows.length === 0;  // habilita/desabilita o botão
+
+      if(rows.length===0){
+        cont.innerHTML = '<div class="muted">Sem registros de histórico.</div>';
+        return;
+      }
       cont.innerHTML = rows.map(r=>`
         <div class="hist-item">
           <div class="hist-head">
@@ -644,6 +718,7 @@ async function boot(){
 
   $('#historyBtn')?.addEventListener('click', ()=>{ renderHistory(); $('#historyModal')?.classList.add('open'); });
   $('#closeHistoryBtn')?.addEventListener('click', ()=>$('#historyModal')?.classList.remove('open'));
+  $('#histExportPdfBtn')?.addEventListener('click', exportHistoryPDF); // <<< novo bind
 
   // Fechar modais ao tocar no backdrop
   $$('.modal').forEach(m=> m.addEventListener('click', (ev)=>{ if(ev.target===m) m.classList.remove('open'); }));

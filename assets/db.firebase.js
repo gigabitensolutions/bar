@@ -25,14 +25,14 @@
     return await safeJson(res);
   }
 
-  // ===== API moderna (usada pelo POS) =====
+  // ===== API moderna (POS) =====
   const modern = {
     health:        () => api('/health'),
 
     // Produtos
     listProducts:  async () => {
       const r = await api('/products');
-      // Normaliza para SEMPRE { products: [...] }
+      // Normaliza para SEMPRE { products: [...] } — seu backend pode retornar array puro
       if (Array.isArray(r)) return { products: r };
       if (r && Array.isArray(r.products)) return { products: r.products };
       return { products: [] };
@@ -49,7 +49,7 @@
     }),
     deleteTab:     (id)=> api(`/tabs/${encodeURIComponent(id)}`, { method:'DELETE' }),
 
-    // Fechamento (grava em histórico)
+    // Fechamento (grava histórico)
     closeComanda:  (c)=> api('/close-comanda', {
       method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(c)
     }),
@@ -57,7 +57,7 @@
     // Histórico
     history:       () => api('/history'),
 
-    // (opcionais) settings e seq
+    // (opcionais)
     settingsGet:   () => api('/settings'),
     settingsPatch: (s) => api('/settings', {
       method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify(s)
@@ -79,11 +79,11 @@
     setProduct:    modern.upsertProduct,
     deleteProduct: modern.deleteProduct,
 
-    // Aliases extras (caso alguma tela use)
+    // Aliases extras (se alguma tela usar)
     saveProduct:   modern.upsertProduct,
     removeProduct: modern.deleteProduct,
 
-    // POS (não usados no admin, mas deixo expostos)
+    // POS (não usados no admin, mas expostos)
     getOpenTabs:   modern.tabsOpen,
     setTab:        modern.upsertTab,
     removeTab:     modern.deleteTab,
