@@ -8,6 +8,13 @@
     return `${BASE}${path}${path.includes('?')?'&':'?'}tenant=${TENANT}`;
   }
 
+  async function safeJson(res){
+    // Aceita 200 com corpo vazio e 204 No Content
+    const text = await res.text().catch(()=> '');
+    if(!text) return {}; // corpo vazio => ok
+    try{ return JSON.parse(text); }catch(_){ return {}; }
+  }
+
   async function api(path, opts){
     if(!BASE) throw new Error('BACKEND_URL não configurado (veja assets/firebase-config.js)');
     const res = await fetch(makeUrl(path), opts);
@@ -15,7 +22,7 @@
       const txt = await res.text().catch(()=>res.statusText);
       throw new Error(`${res.status} ${res.statusText} — ${txt}`);
     }
-    return await res.json();
+    return await safeJson(res);
   }
 
   // ===== API moderna (usada pelo POS) =====
@@ -23,7 +30,13 @@
     health:        () => api('/health'),
 
     // Produtos
-    listProducts:  () => api('/products'),
+    listProducts:  async () => {
+      const r = await api('/products');
+      // Normaliza para SEMPRE { products: [...] }
+      if (Array.isArray(r)) return { products: r };
+      if (r && Array.isArray(r.products)) return { products: r.products };
+      return { products: [] };
+    },
     upsertProduct: (p) => api('/products', {
       method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(p)
     }),
@@ -52,22 +65,21 @@
     seqNext:       () => api('/seq/next', { method:'POST' })
   };
 
-  // ===== Aliases/Adaptadores legados para o ADMIN (window.DB.*) =====
+  // ===== Adaptadores legados (compatíveis com seu admin.js) =====
   const legacy = {
-    // healthCheck() -> health()
     healthCheck: modern.health,
 
     // getProducts deve retornar **array**
     getProducts: async () => {
       const r = await modern.listProducts();
-      return Array.isArray(r.products) ? r.products : [];
+      return r.products || [];
     },
 
-    // setProduct/deleteProduct: mesmos nomes que seu admin.js usa
+    // Nomes esperados no admin.js
     setProduct:    modern.upsertProduct,
     deleteProduct: modern.deleteProduct,
 
-    // Extra: se algum código antigo usar esses nomes, ficam compatíveis
+    // Aliases extras (caso alguma tela use)
     saveProduct:   modern.upsertProduct,
     removeProduct: modern.deleteProduct,
 
@@ -86,9 +98,9 @@
   // Exporta moderno e legado na mesma instância
   const apiObj = Object.assign({}, modern, legacy);
 
-  // Flag para seu admin mostrar "DB: OFF" quando não houver BASE
+  // Flag para o admin mostrar "DB: OFF" quando não houver BASE
   apiObj.enabled = !!BASE;
 
   window.API = apiObj; // moderno
-  window.DB  = apiObj; // legado (compatível com admin.js fornecido)
+  window.DB  = apiObj; // legado (compatível com admin.js)
 })();
