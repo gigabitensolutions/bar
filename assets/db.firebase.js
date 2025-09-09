@@ -1,5 +1,5 @@
 (function(){
-  // Config de ambiente (ajuste em assets/firebase-config.js)
+  // Ajuste sua URL/tenant em assets/firebase-config.js
   const cfg    = window.FIREBASE_CONFIG || {};
   const BASE   = cfg.BACKEND_URL;
   const TENANT = encodeURIComponent(cfg.TENANT_ID || 'default');
@@ -18,26 +18,25 @@
     return await res.json();
   }
 
-  // ===== API moderna (nomes atuais) =====
+  // ===== API moderna (usada pelo POS) =====
   const modern = {
-    // Health
     health:        () => api('/health'),
 
-    // Produtos (admin)
+    // Produtos
     listProducts:  () => api('/products'),
     upsertProduct: (p) => api('/products', {
       method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(p)
     }),
     deleteProduct: (id)=> api(`/products/${encodeURIComponent(id)}`, { method:'DELETE' }),
 
-    // Comandas abertas (tabs) — sessão cross-browser
+    // Comandas abertas (sessão cross-browser)
     tabsOpen:      () => api('/tabs/open'),
     upsertTab:     (t) => api('/tabs/upsert', {
       method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(t)
     }),
     deleteTab:     (id)=> api(`/tabs/${encodeURIComponent(id)}`, { method:'DELETE' }),
 
-    // Fechamento (grava histórico no Firestore)
+    // Fechamento (grava em histórico)
     closeComanda:  (c)=> api('/close-comanda', {
       method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(c)
     }),
@@ -53,41 +52,43 @@
     seqNext:       () => api('/seq/next', { method:'POST' })
   };
 
-  // ===== Aliases legados (para código antigo) =====
+  // ===== Aliases/Adaptadores legados para o ADMIN (window.DB.*) =====
   const legacy = {
     // healthCheck() -> health()
-    healthCheck:   modern.health,
+    healthCheck: modern.health,
 
-    // getProducts()/setProduct()/deleteProduct() -> list/upsert/delete
-    getProducts:   modern.listProducts,
+    // getProducts deve retornar **array**
+    getProducts: async () => {
+      const r = await modern.listProducts();
+      return Array.isArray(r.products) ? r.products : [];
+    },
+
+    // setProduct/deleteProduct: mesmos nomes que seu admin.js usa
     setProduct:    modern.upsertProduct,
     deleteProduct: modern.deleteProduct,
 
-    // Também mantenho estes (caso apareçam em outras telas):
-    saveProduct:   modern.upsertProduct,  // alias adicional
-    removeProduct: modern.deleteProduct,  // alias adicional
+    // Extra: se algum código antigo usar esses nomes, ficam compatíveis
+    saveProduct:   modern.upsertProduct,
+    removeProduct: modern.deleteProduct,
 
-    // getOpenTabs()/setTab()/removeTab()/closeTab()
+    // POS (não usados no admin, mas deixo expostos)
     getOpenTabs:   modern.tabsOpen,
     setTab:        modern.upsertTab,
     removeTab:     modern.deleteTab,
     closeTab:      modern.closeComanda,
 
-    // getHistory()
     getHistory:    modern.history,
-
-    // getSettings()/patchSettings()/nextSequence()
     getSettings:   modern.settingsGet,
     patchSettings: modern.settingsPatch,
     nextSequence:  modern.seqNext
   };
 
-  // Exporta em window.API (moderno) e window.DB (legado)
+  // Exporta moderno e legado na mesma instância
   const apiObj = Object.assign({}, modern, legacy);
 
-  // Flag simples para que seu admin mostre "DB: OFF" enquanto não há BASE
+  // Flag para seu admin mostrar "DB: OFF" quando não houver BASE
   apiObj.enabled = !!BASE;
 
-  window.API = apiObj;
-  window.DB  = apiObj; // <= compatibilidade com seu admin.js
+  window.API = apiObj; // moderno
+  window.DB  = apiObj; // legado (compatível com admin.js fornecido)
 })();
