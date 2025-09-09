@@ -11,6 +11,7 @@ const $   = s => document.querySelector(s);
 const $$  = s => Array.from(document.querySelectorAll(s));
 const uid = () => Math.random().toString(36).slice(2,10);
 const sum = arr => arr.reduce((a,b)=>a+b,0);
+const haptics = ms => { try{ if(navigator.vibrate) navigator.vibrate(ms); }catch(_){} };
 
 /* ========= Produtos default (fallback) ========= */
 const DEFAULT_PRODUCTS = [
@@ -24,11 +25,11 @@ const DEFAULT_PRODUCTS = [
 
 /* ========= LocalStorage Keys ========= */
 const LS_KEYS = {
-  COMANDAS: 'comandas_v7',
-  ACTIVE:   'activeComandaId_v7',
-  PRODUCTS: 'products_cache_v4',
-  SERVICE:  'service10_v4',
-  BIGTOUCH: 'ui_big_touch_v4'
+  COMANDAS: 'comandas_v8',
+  ACTIVE:   'activeComandaId_v8',
+  PRODUCTS: 'products_cache_v5',
+  SERVICE:  'service10_v5',
+  BIGTOUCH: 'ui_big_touch_v5'
 };
 
 /* ========= Estado ========= */
@@ -45,6 +46,17 @@ let state = {
   serverOK: false,
   historyCache: []              // cache do /history para exportar PDF
 };
+
+/* ========= Toast helper ========= */
+let toastTimer = null;
+function showToast(msg='Adicionado!'){
+  let t = $('#toast');
+  if(!t){ t = document.createElement('div'); t.id='toast'; t.className='toast'; document.body.appendChild(t); }
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=> t.classList.remove('show'), 1200);
+}
 
 /* ========= Persistência ========= */
 function loadPersisted(){
@@ -69,7 +81,7 @@ async function loadProducts(){
       const arr = Array.isArray(data.products) ? data.products : [];
       if(arr.length){
         state.products = arr.map(p => ({
-          id: p.id, name: p.name, category: p.category || 'Outros', price: Number(p.price||0), image: p.image || './assets/placeholder.svg'
+          id: p.id, name: p.name, category: p.category || 'Outros', price: Number(p.price||0), image: (p.image||'').trim() || './assets/placeholder.svg'
         }));
         state.categories = ['Todos', ...Array.from(new Set(state.products.map(p=>p.category)))];
         localStorage.setItem(LS_KEYS.PRODUCTS, JSON.stringify(state.products));
@@ -199,6 +211,29 @@ function getQty(productId){
   const c = getActive(); if(!c) return 0;
   return c.items[productId]?.qty || 0;
 }
+
+/* Press-and-hold helper para stepper */
+function addPressHold(el, stepFn){
+  let t1=null, t2=null;
+  const start=(ev)=>{ ev.preventDefault(); stepFn(); t1=setTimeout(()=>{ t2=setInterval(stepFn, 90); }, 350); };
+  const end=()=>{ clearTimeout(t1); clearInterval(t2); t1=t2=null; };
+  el.addEventListener('mousedown', start, {passive:false});
+  el.addEventListener('touchstart', start, {passive:false});
+  ['mouseup','mouseleave','touchend','touchcancel'].forEach(evt=> el.addEventListener(evt, end, {passive:true}));
+}
+
+/* Quick add: adiciona +1, atualiza campo do card e mostra toast */
+function quickAdd(product){
+  addToComanda(product,1);
+  const card = document.querySelector(`.card[data-id="${product.id}"]`);
+  if(card){
+    const input = card.querySelector('.stepper input');
+    if(input){ input.value = getQty(product.id); }
+  }
+  showToast('Item adicionado');
+  haptics(12);
+}
+
 function addToComanda(product, qty=1){
   let c = getActive();
   if(!c){
@@ -213,6 +248,7 @@ function addToComanda(product, qty=1){
   if(current.qty<=0) delete c.items[product.id]; else c.items[product.id] = current;
   persist(); updateSummaryBar(); syncTab(c);
 }
+
 function renderGrid(){
   const grid = $('#grid'); const list = state.products.filter(passFilters);
   grid.innerHTML = '';
@@ -220,6 +256,7 @@ function renderGrid(){
     const imgSrc = p.image && p.image.trim() ? p.image.trim() : './assets/placeholder.svg';
     const card = document.createElement('article');
     card.className = 'card';
+    card.dataset.id = p.id;
     card.innerHTML = `
       <div class="product-head">
         <div class="left">
@@ -232,21 +269,40 @@ function renderGrid(){
         <div class="price">${BRL.format(p.price)}</div>
       </div>
 
+      <!-- botão flutuante de quick-add -->
+      <button class="quick-add" aria-label="Adicionar ${p.name}" title="Adicionar">+</button>
+
       <div class="card-controls">
         <div class="stepper">
           <button data-act="dec" aria-label="Diminuir">−</button>
           <input aria-label="Quantidade" type="text" inputmode="numeric" value="${getQty(p.id)}">
           <button data-act="inc" aria-label="Aumentar">+</button>
         </div>
-        <button class="btn" data-add>Adicionar</button>
+        <button class="btn lg" data-add>Adicionar</button>
       </div>`;
+
+    // Stepper
     const input = card.querySelector('input');
-    card.querySelector('[data-act="dec"]').onclick=()=>{input.value=Math.max(0,(parseInt(input.value)||0)-1)};
-    card.querySelector('[data-act="inc"]').onclick=()=>{input.value=Math.max(0,(parseInt(input.value)||0)+1)};
+    const decBtn = card.querySelector('[data-act="dec"]');
+    const incBtn = card.querySelector('[data-act="inc"]');
+    decBtn.onclick=()=>{ input.value=Math.max(0,(parseInt(input.value)||0)-1) };
+    incBtn.onclick=()=>{ input.value=Math.max(0,(parseInt(input.value)||0)+1) };
+    addPressHold(decBtn, ()=>{ decBtn.click(); });
+    addPressHold(incBtn, ()=>{ incBtn.click(); });
     input.onfocus=()=>input.select();
+
+    // Adicionar (usa valor do input)
     card.querySelector('[data-add]').onclick=()=>{
-      const q=Math.max(1,parseInt(input.value)||0); addToComanda(p,q); input.value=getQty(p.id);
+      const q=Math.max(1,parseInt(input.value)||0);
+      addToComanda(p,q);
+      input.value=getQty(p.id);
+      showToast('Itens adicionados');
+      haptics(10);
     };
+
+    // Quick-Add (+) flutuante: adiciona 1
+    card.querySelector('.quick-add').onclick = ()=> quickAdd(p);
+
     grid.appendChild(card);
   });
 }
@@ -637,6 +693,8 @@ function initInlineNew(){
       const id = createComanda({name,label,color});
       refreshComandaSelect();
       const sel = $('#comandaSelect'); if(sel) sel.value = id;
+      showToast('Comanda criada');
+      haptics(8);
     };
   }
 }
@@ -669,6 +727,12 @@ function startPolling(){
 /* ========= Boot ========= */
 async function boot(){
   loadPersisted();
+
+  // AUTO: liga toque grande por padrão em aparelhos tocáveis (primeiro acesso)
+  if (window.matchMedia && window.matchMedia('(pointer:coarse)').matches && localStorage.getItem(LS_KEYS.BIGTOUCH) === null){
+    state.bigTouch = true; persist();
+  }
+
   await refreshHealth();
   await loadProducts();
 
@@ -718,7 +782,7 @@ async function boot(){
 
   $('#historyBtn')?.addEventListener('click', ()=>{ renderHistory(); $('#historyModal')?.classList.add('open'); });
   $('#closeHistoryBtn')?.addEventListener('click', ()=>$('#historyModal')?.classList.remove('open'));
-  $('#histExportPdfBtn')?.addEventListener('click', exportHistoryPDF); // <<< novo bind
+  $('#histExportPdfBtn')?.addEventListener('click', exportHistoryPDF);
 
   // Fechar modais ao tocar no backdrop
   $$('.modal').forEach(m=> m.addEventListener('click', (ev)=>{ if(ev.target===m) m.classList.remove('open'); }));
