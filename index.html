@@ -12,11 +12,13 @@
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <div class="right row">
   <span id="dbStatus" class="tag">DB: —</span>
+  <!--
   <button id="bigTouchBtn" class="btn ghost" aria-pressed="false">Toque grande</button>
   <button id="overviewBtn" class="btn">Visão geral</button>
   <button id="historyBtn" class="btn">Histórico</button>
   <select id="comandaSelect" class="select" style="min-width:160px"></select>
   <button id="deleteComandaBtn" class="btn danger">Excluir</button>
+  -->
 </div>
 </head>
 <body>
@@ -35,7 +37,7 @@
 
       <!-- Nova comanda inline -->
       <div class="newc">
-        <input id="ncName" class="input" placeholder="Nome da comanda (ex.: Mesa 1)" value="Mesa 1">
+        <input id="ncName" class="input" placeholder="Nome da comanda (ex.: Mesa 1)" value="Nova Comanda">
         <input id="ncLabel" class="input" placeholder="Etiqueta (opcional)">
         <div id="ncColors" class="swatches"></div>
         <button id="ncAdd" class="btn accent">Nova comanda</button>
@@ -43,8 +45,9 @@
 
       <div class="toolbar">
         <input id="search" class="input" placeholder="Buscar produto por nome/categoria..."/>
-        <button id="clearSearch" class="btn ghost">Limpar</button>
+        <!-- <button id="clearSearch" class="btn ghost">Limpar</button>
         <button id="openDrawer" class="btn warn">Abrir comanda</button>
+        -->
       </div>
       <div id="chips" class="chips"></div>
     </div>
