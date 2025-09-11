@@ -8,20 +8,13 @@
   --tap-md:48px;    /* confortável */
   --thumb:48px;     /* miniaturas de produto */
   --font-scale:1;
-
-  /* tamanhos para quick-add e stepper */
-  --btn-circle:48px;
-  --stepper-btn:52px;
-  --stepper-font:22px;
 }
+/* Modo toque grande (aplicado no <body>) */
 .big-touch{
   --tap:56px;
   --tap-md:64px;
   --thumb:64px;
   --font-scale:1.1;
-  --btn-circle:56px;
-  --stepper-btn:60px;
-  --stepper-font:24px;
 }
 
 /* Base */
@@ -32,13 +25,9 @@ body{
   color:var(--text); font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Inter,Arial,sans-serif;
   min-height:100vh; display:flex; flex-direction:column;
   -webkit-text-size-adjust:100%;
-  text-size-adjust:100%;
   font-size:calc(16px * var(--font-scale));
-  overscroll-behavior-y:none;
 }
-button,.btn,.chip,.stepper button{
-  -webkit-tap-highlight-color:transparent; touch-action:manipulation; user-select:none;
-}
+button,.btn,.chip,.stepper button{ -webkit-tap-highlight-color:transparent; touch-action:manipulation; }
 
 /* Header */
 header{
@@ -63,7 +52,6 @@ h1{font-size:18px; margin:0}
 .btn.warn{background:var(--accent-2); color:#3a2502; border-color:transparent}
 .btn.danger{background:var(--danger); color:#fff; border-color:transparent}
 .btn.ghost{background:transparent; font-weight:500}
-.btn.lg{padding:14px 18px; font-size:16px; min-height:var(--tap-md)}
 .hidden{display:none}
 
 /* Toolbar */
@@ -89,14 +77,10 @@ main{flex:1}
 
 /* Cards de produto */
 .card{
-  position:relative;
   background:linear-gradient(180deg,#0b1020 0%,#0a0f1d 100%);
   border:1px solid rgba(148,163,184,.15); border-radius:var(--radius);
   padding:14px; box-shadow:var(--shadow)
 }
-/* Hover/Focus */
-.card:focus-within{ outline:2px solid #60a5fa; outline-offset:2px }
-
 /* Cabeçalho com miniatura + título */
 .product-head{display:flex; align-items:center; justify-content:space-between; gap:10px}
 .product-head .left{display:flex; align-items:center; gap:10px; min-width:0}
@@ -113,33 +97,16 @@ main{flex:1}
 .muted{color:var(--muted); font-size:12px}
 .flex{display:flex; align-items:center; justify-content:space-between; gap:8px}
 
-/* Quick-Add (+) flutuante no card */
-.quick-add{
-  position:absolute; right:10px; bottom:10px;
-  width:var(--btn-circle); height:var(--btn-circle); border-radius:999px;
-  display:flex; align-items:center; justify-content:center;
-  background:var(--accent); color:#052e12; font-weight:900; font-size:22px;
-  border:none; box-shadow:0 8px 20px rgba(34,197,94,.35); cursor:pointer;
-}
-.quick-add:active{ transform:scale(.97) }
-
-/* Área de controles do card */
-.card-controls{
-  display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:12px;
-}
-
-/* Stepper grande (mais “tocável”) */
+/* Stepper grande */
 .stepper{
   display:flex; align-items:center; gap:8px; background:#0b1020; border:1px solid rgba(148,163,184,.25);
-  padding:6px; border-radius:12px; flex:1;
+  padding:6px; border-radius:12px;
 }
 .stepper button{
-  width:var(--stepper-btn); height:var(--stepper-btn); border-radius:12px; border:1px solid rgba(148,163,184,.3);
-  background:#0c1530; color:var(--text); cursor:pointer; font-size:var(--stepper-font); font-weight:800;
+  width:var(--tap); height:var(--tap); border-radius:12px; border:1px solid rgba(148,163,184,.3);
+  background:#0c1530; color:var(--text); cursor:pointer; font-size:20px; font-weight:800;
 }
-.stepper input{
-  width:64px; text-align:center; background:transparent; border:none; color:var(--text); font-weight:800; font-size:18px
-}
+.stepper input{width:56px; text-align:center; background:transparent; border:none; color:var(--text); font-weight:800; font-size:16px}
 
 /* Bottom bar */
 .bar{
@@ -189,7 +156,6 @@ main{flex:1}
 .form-row{display:grid; gap:8px; margin-bottom:8px}
 .swatches{display:flex; gap:10px; flex-wrap:wrap}
 .swatch{width:38px; height:38px; border-radius:999px; border:2px solid rgba(255,255,255,.25); cursor:pointer}
-.swatch.active{outline:3px solid #fff5}
 .tag{display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border-radius:999px; border:1px solid rgba(148,163,184,.25)}
 .dot{width:12px; height:12px; border-radius:999px; display:inline-block; margin-right:4px}
 
@@ -197,27 +163,14 @@ main{flex:1}
 table{width:100%; border-collapse:collapse}
 th,td{border-bottom:1px solid rgba(148,163,184,.15); padding:10px; text-align:left}
 
-/* Toast */
-.toast{
-  position:fixed; left:50%; bottom:calc(80px + env(safe-area-inset-bottom));
-  transform:translateX(-50%); background:#0b1020; color:#e5e7eb;
-  border:1px solid rgba(148,163,184,.25); border-radius:999px;
-  padding:10px 14px; font-weight:700; box-shadow:var(--shadow); z-index:70; opacity:0; pointer-events:none;
-  transition:opacity .25s ease, transform .25s ease;
-}
-.toast.show{ opacity:1; transform:translateX(-50%) translateY(-4px) }
-
 /* Acessibilidade */
 :focus-visible{ outline:2px solid #60a5fa; outline-offset:2px }
 
 /* Ajustes para telas com toque/estreitas */
 @media (pointer:coarse), (max-width:540px){
   .select,.btn,.input{font-size:16px; padding:14px 16px; min-height:var(--tap-md)}
-  .btn.lg{font-size:17px}
   .chip{font-size:16px; padding:12px 16px}
   .product-head .title{font-size:18px}
   .toolbar{grid-template-columns:1fr}
   .bar-inner{gap:14px}
-  /* o botão Adicionar ocupa mais espaço */
-  .card-controls{gap:12px}
 }
