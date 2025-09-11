@@ -1,4 +1,5 @@
-// assets/admin.js — CRUD de Produtos
+// assets/admin.js — CRUD de Produtos (rebuild)
+
 (function(){
   const $ = s => document.querySelector(s);
   const BRL = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -11,8 +12,9 @@
     else if(info && info.ok && info.canReadServer){ text='DB: OK'; ok=true; }
     else if(info && info.ok === false){ text='DB: ERRO'; ok=false; }
     el.textContent = text;
-    el.classList.toggle('ok', !!(info && info.ok && info.canReadServer));
-    el.classList.toggle('err', !!(info && info.ok===false));
+    if(ok===true){ el.style.borderColor='#22c55e'; el.style.color='#22c55e'; }
+    else if(ok===false){ el.style.borderColor='#ef4444'; el.style.color='#ef4444'; }
+    else{ el.style.borderColor='#64748b'; el.style.color='#94a3b8'; }
   }
   async function health(){
     try{ const r = await window.DB.healthCheck(); setDBStatus($('#dbStatusAdmin'), r); }

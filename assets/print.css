@@ -1,18 +1,5 @@
-/* Térmico 80mm */
-@page{ size:80mm auto; margin:0; }
-.ticket{ width:80mm; margin:0 auto; padding:2mm 3mm; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", "Courier New", monospace; color:#000; background:#fff; -webkit-print-color-adjust:exact; print-color-adjust:exact; font-size:11px; line-height:1.25; }
-.ticket .title{ text-align:center; font-weight:700; font-size:14px; margin-bottom:2mm; }
-.ticket .meta{ text-align:center; margin-bottom:2mm; }
-.sep{ border-top:1px dashed #000; margin:2mm 0; }
-.items{ width:100%; border-collapse:collapse; }
-.items td{ padding:1mm 0; vertical-align:top; }
-.items .qty{ width:8mm; text-align:right; padding-right:2mm; }
-.items .name{ width:auto; }
-.items .amt{ width:24mm; text-align:right; }
-.totals{ width:100%; margin-top:2mm; }
-.totals .row{ display:flex; justify-content:space-between; margin:1mm 0; }
-.totals .row strong{ font-weight:700; }
-.qr{ display:block; margin:2mm auto; width:42mm; }
-.payload{ word-break:break-all; font-size:9px; margin-top:1mm; }
-.footer{ text-align:center; margin-top:3mm; }
-@media print{ body,html{ background:#fff!important } body>*:not(.ticket){ display:none!important } .ticket{ display:block!important } }
+/* assets/print.css */
+@media print {
+  header, .bar, .chips, .toolbar, .footer { display:none !important; }
+  #printArea { position:static !important; left:auto; top:auto; }
+}
